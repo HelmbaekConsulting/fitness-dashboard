@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ title }} · Fitness</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">Fitness</div>
+  <nav class="tabs">
+    {% for key, label, href in pages %}
+    <a href="{{ href }}{% if key != 'setup' and query %}?{{ query }}{% endif %}" class="{{ 'on' if key == page else '' }}">{{ label }}</a>
+    {% endfor %}
+  </nav>
+</header>
+<main>
+{% block main %}{% endblock %}
+</main>
+{% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,69 @@
+{% extends 'base.html' %}
+{% block main %}
+{% macro status(r) %}
+{% if r %}<p class="tile-note">Last run {{ r.started[:10] | dmy }} {{ r.started[11:16] }}: <span class="{{ 'ok' if r.status == 'ok' else 'warn' }}">{{ r.status }}</span>{% if r.message %} · {{ r.message[:160] }}{% endif %}</p>{% endif %}
+{% endmacro %}
+<h1>Setup</h1>
+{% if msg %}<p class="flash">{{ msg }}</p>{% endif %}
+
+<section class="setup-grid">
+  <div class="card">
+    <h2>Garmin Connect</h2>
+    {% if garmin_ready %}
+    <p class="ok">● Logged in. Tokens saved; they last about a year.</p>
+    {% else %}
+    <p class="warn">● Not logged in yet.</p>
+    <p>Run this once in the container’s console (Unraid: Docker tab → container icon → Console), then enter the MFA code if Garmin asks:</p>
+    <pre>python -m app.cli garmin-login</pre>
+    {% endif %}
+    {{ status(last.get('garmin')) }}
+  </div>
+
+  <div class="card">
+    <h2>Withings</h2>
+    {% if not withings_configured %}
+    <p class="warn">● Missing WITHINGS_CLIENT_ID and WITHINGS_CLIENT_SECRET. See the README for the developer app.</p>
+    {% elif withings_connected %}
+    <p class="ok">● Connected.</p>
+    <p><a class="button ghost" href="/withings/connect">Reconnect</a></p>
+    {% else %}
+    <p class="warn">● Not connected yet.</p>
+    <p><a class="button" href="/withings/connect">Connect Withings</a></p>
+    {% endif %}
+    {{ status(last.get('withings')) }}
+  </div>
+
+  <div class="card">
+    <h2>Food and Jefit exports</h2>
+    <p>Drop CSV files into the import folder. They’re picked up every 15 minutes and moved to <code>done</code> or <code>failed</code>.</p>
+    <pre>{{ import_dir }}</pre>
+    {{ status(last.get('import')) }}
+    {% if imports %}
+    <ul class="plain">{% for i in imports %}<li>{{ i.file }}: {{ i.kind }}, {{ i.rows }} rows</li>{% endfor %}</ul>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>Sync</h2>
+    <p>Runs by itself every day at {{ sync_time }}. History is fetched backwards, about 120 days per run.</p>
+    <form method="post" action="/sync"><button class="button" {{ 'disabled' if running else '' }}>{{ 'Sync running…' if running else 'Sync now' }}</button></form>
+    <ul class="plain">
+      <li>Garmin days: {{ counts.get('garmin', 0) }}</li>
+      <li>Withings days: {{ counts.get('withings', 0) }}</li>
+      <li>Food days from exports: {{ counts.get('csv', 0) }}</li>
+      <li>Activities: {{ counts.get('activities', 0) }}</li>
+      <li>Strength sets: {{ counts.get('sets', 0) }}</li>
+    </ul>
+  </div>
+</section>
+
+<section class="card table-card">
+  <h2>Recent runs</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Source</th><th>Started</th><th>Status</th><th>Details</th></tr></thead>
+    <tbody>{% for r in recent %}
+      <tr><td>{{ r.source }}</td><td>{{ r.started[:10] | dmy }} {{ r.started[11:16] }}</td><td class="{{ 'ok' if r.status == 'ok' else 'warn' }}">{{ r.status }}</td><td class="details">{{ r.message or '' }}</td></tr>
+    {% else %}<tr><td colspan="4">Nothing has run yet.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+{% endblock %}

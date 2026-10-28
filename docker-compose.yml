@@ -1,0 +1,14 @@
+# For Unraid with the Compose Manager plugin, or any Docker host. Paths are Unraid's usual appdata and share folders.
+services:
+  fitness:
+    image: ghcr.io/helmbaek/fitness-dashboard:latest   # or build: . to build on the server
+    container_name: fitness-dashboard
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    env_file: .env
+    environment:
+      TZ: Europe/Copenhagen
+    volumes:
+      - /mnt/user/appdata/fitness-dashboard:/data
+      - /mnt/user/fitness-import:/import

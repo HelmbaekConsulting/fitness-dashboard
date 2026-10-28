@@ -1,0 +1,96 @@
+{% extends 'base.html' %}
+{% block main %}
+<form class="filters" method="get">
+  <div class="chip-row">
+    {% for key, label, _ in ranges %}
+    <button type="submit" name="range" value="{{ key }}" class="chip {{ 'on' if key == range else '' }}">{{ label }}</button>
+    {% endfor %}
+  </div>
+  <div class="custom">
+    <label>From <input type="date" name="from" value="{{ start }}"></label>
+    <label>To <input type="date" name="to" value="{{ end }}"></label>
+    {% if picked %}<input type="hidden" name="exercise" value="{{ picked }}">{% endif %}
+    <button type="submit" class="chip">Apply</button>
+  </div>
+</form>
+
+<h1>{{ title }} <span class="range-text">{{ start | dmy }} – {{ end | dmy }}</span></h1>
+
+{% if lifts is defined %}
+<form class="lift-pick" method="get">
+  {% if range == 'custom' %}<input type="hidden" name="from" value="{{ start }}"><input type="hidden" name="to" value="{{ end }}">
+  {% else %}<input type="hidden" name="range" value="{{ range }}">{% endif %}
+  <label>Exercise
+    <select name="exercise" onchange="this.form.submit()">
+      {% for n in lifts %}<option {{ 'selected' if n == picked else '' }}>{{ n }}</option>{% endfor %}
+    </select>
+  </label>
+</form>
+{% endif %}
+
+<section class="tiles">
+  {% for t in tiles %}
+  <div class="tile">
+    <div class="tile-label">{{ t.label }}</div>
+    {% if t.value is none %}
+    <div class="tile-value muted">No data</div>
+    {% else %}
+    <div class="tile-value">{{ t.value }}<span class="unit">{{ t.unit }}</span></div>
+    {% endif %}
+    {% if t.delta %}<div class="tile-delta {{ t.tone }}">{% if t.tone == 'good' %}▲{% elif t.tone == 'bad' %}▼{% endif %} {{ t.delta }} {{ t.unit }}</div>{% endif %}
+    {% if t.note %}<div class="tile-note">{{ t.note }}</div>{% endif %}
+  </div>
+  {% endfor %}
+</section>
+
+<section class="charts">
+  {% for c in charts %}
+  <figure class="card">
+    <figcaption><h2>{{ c.title }}</h2>{% if c.unit %}<span class="unit-tag">{{ c.unit }}</span>{% endif %}</figcaption>
+    {% if c.empty %}
+    <div class="empty">No data for this range yet.</div>
+    {% else %}
+    <div class="canvas-wrap"><canvas id="c-{{ c.id }}"></canvas></div>
+    {% endif %}
+    {% if c.note %}<p class="note">{{ c.note }}</p>{% endif %}
+  </figure>
+  {% endfor %}
+</section>
+
+{% if summary %}
+<section class="card table-card">
+  <h2>Lifts in this range</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Exercise</th><th class="num">Sessions</th><th class="num">First e1RM</th><th class="num">Latest</th><th class="num">Peak</th><th>Last done</th></tr></thead>
+    <tbody>{% for s in summary %}
+      <tr><td>{{ s.exercise }}</td><td class="num">{{ s.sessions }}</td><td class="num">{{ '%.1f' % s.first }}</td>
+        <td class="num">{{ '%.1f' % s.latest }}</td><td class="num">{{ '%.1f' % s.peak }}</td><td>{{ s.last | dmy }}</td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+</section>
+{% endif %}
+
+{% if activities %}
+<section class="card table-card">
+  <h2>Activities</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Date</th><th>Activity</th><th class="num">Time</th><th class="num">km</th><th class="num">Avg HR</th><th class="num">Load</th></tr></thead>
+    <tbody>{% for a in activities %}
+      <tr><td>{{ a.day | dmy }}</td><td>{{ a.name or a.type }}</td>
+        <td class="num">{% if a.duration_s %}{{ (a.duration_s // 3600) | int }}:{{ '%02d' % ((a.duration_s % 3600) // 60) }}{% endif %}</td>
+        <td class="num">{% if a.distance_m %}{{ '%.1f' % (a.distance_m / 1000) }}{% endif %}</td>
+        <td class="num">{{ a.avg_hr | int if a.avg_hr else '' }}</td>
+        <td class="num">{{ a.training_load | int if a.training_load else '' }}</td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+</section>
+{% endif %}
+
+{% if source %}<p class="source">Source: {{ source }}.</p>{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script id="chart-data" type="application/json">{{ charts | tojson }}</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="/static/charts.js"></script>
+{% endblock %}
