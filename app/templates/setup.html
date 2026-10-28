@@ -10,11 +10,11 @@
   <div class="card">
     <h2>Garmin Connect</h2>
     {% if garmin_ready %}
-    <p class="ok">● Logged in. Tokens saved; they last about a year.</p>
+    <p class="ok">● Personal API key set.</p>
+    <p class="tile-note">The key expires on the date you chose in Garmin Connect. Then create a new one and replace GARMIN_API_KEY.</p>
     {% else %}
-    <p class="warn">● Not logged in yet.</p>
-    <p>Run this once in the container’s console (Unraid: Docker tab → container icon → Console), then enter the MFA code if Garmin asks:</p>
-    <pre>python -m app.cli garmin-login</pre>
+    <p class="warn">● No API key yet.</p>
+    <p>Create a personal API key in Garmin Connect (account settings → Personal API) and set it as GARMIN_API_KEY.</p>
     {% endif %}
     {{ status(last.get('garmin')) }}
   </div>

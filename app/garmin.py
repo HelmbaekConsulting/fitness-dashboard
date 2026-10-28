@@ -1,42 +1,40 @@
-# Garmin Connect sync via the unofficial garminconnect library. The login is done once (python -m app.cli garmin-login,
-# which handles MFA); the saved tokens in DATA_DIR/garmin_tokens last about a year and are reused by the daily sync.
+# Garmin Connect sync via Garmin's official Personal API (https://developer.garmin.com/gc-developer-program/personal/).
+# The personal key (GARMIN_API_KEY) is exchanged for a 24-hour access token; the key itself expires on the date chosen
+# when it was created in Garmin Connect, after which a new one goes into .env. VO2 max is not offered by this API.
 import json
 import time
 from datetime import date, timedelta
 
-from garminconnect import Garmin
+import requests
 
 from . import db
-from .config import GARMIN_EMAIL, GARMIN_PASSWORD, GARMIN_TOKEN_DIR, HISTORY_START
+from .config import GARMIN_API_KEY, HISTORY_START
 
-PAUSE = 1.0  # seconds between calls, to stay well clear of Garmin's rate limits
-DAY_KINDS = ('summary', 'sleep', 'hrv', 'maxmetrics')
-
-
-def has_tokens():
-    return GARMIN_TOKEN_DIR.exists() and any(GARMIN_TOKEN_DIR.iterdir())
+BASE = 'https://personal.connectapi.garmin.com'
+PAUSE = 1.0  # seconds between calls; Garmin publishes no rate limit, so stay gentle
 
 
-def login_interactive():
-    g = Garmin(GARMIN_EMAIL, GARMIN_PASSWORD, prompt_mfa=lambda: input('Garmin MFA code: ').strip())
-    g.login()
-    GARMIN_TOKEN_DIR.mkdir(parents=True, exist_ok=True)
-    g.garth.dump(str(GARMIN_TOKEN_DIR))
-    return g.get_full_name()
+def has_key():
+    return bool(GARMIN_API_KEY)
 
 
-def client():
-    g = Garmin()
-    if has_tokens():
-        g.login(str(GARMIN_TOKEN_DIR))
-        return g
-    if not (GARMIN_EMAIL and GARMIN_PASSWORD):
-        raise RuntimeError('No Garmin login yet: run "python -m app.cli garmin-login" once')
-    g = Garmin(GARMIN_EMAIL, GARMIN_PASSWORD)
-    g.login()
-    GARMIN_TOKEN_DIR.mkdir(parents=True, exist_ok=True)
-    g.garth.dump(str(GARMIN_TOKEN_DIR))
-    return g
+class Client:
+    def __init__(self):
+        if not GARMIN_API_KEY:
+            raise RuntimeError('GARMIN_API_KEY is missing: create a personal API key in Garmin Connect and add it to .env')
+        r = requests.post(BASE + '/personalapitoken-service/personal-api/personal-api-key/token',
+                          headers={'Authorization': f'ApiKey {GARMIN_API_KEY}'}, timeout=30)
+        if r.status_code != 200:
+            raise RuntimeError(f'Garmin refused the API key (HTTP {r.status_code}); it may have expired')
+        self.headers = {'Authorization': f'Bearer {r.text.strip()}', 'Accept': 'application/json'}
+
+    def get(self, path, params=None):
+        r = requests.get(BASE + path, headers=self.headers, params=params, timeout=60)
+        time.sleep(PAUSE)
+        if r.status_code == 404 or not r.content:
+            return None
+        r.raise_for_status()
+        return r.json()
 
 
 def _num(d, *path):
@@ -44,7 +42,7 @@ def _num(d, *path):
         if not isinstance(d, dict):
             return None
         d = d.get(p)
-    return d if isinstance(d, (int, float)) else None
+    return d if isinstance(d, (int, float)) and not isinstance(d, bool) else None
 
 
 def extract_day(con, day, kind, data):
@@ -66,7 +64,7 @@ def extract_day(con, day, kind, data):
         if consumed:
             m('kcal_in_garmin', consumed)
     elif kind == 'sleep':
-        s = data.get('dailySleepDTO') or {}
+        s = data.get('dailySleepDTO', data)
         if _num(s, 'sleepTimeSeconds'):
             m('sleep_h', s['sleepTimeSeconds'] / 3600)
             for key, name in (('deepSleepSeconds', 'sleep_deep_h'), ('lightSleepSeconds', 'sleep_light_h'),
@@ -74,33 +72,24 @@ def extract_day(con, day, kind, data):
                 if _num(s, key) is not None:
                     m(name, s[key] / 3600)
             m('sleep_score', _num(s, 'sleepScores', 'overall', 'value'))
-        m('hrv_sleep', _num(data, 'avgOvernightHrv'))
     elif kind == 'hrv':
         m('hrv_sleep', _num(data, 'hrvSummary', 'lastNightAvg'))
-    elif kind == 'maxmetrics':
-        rows = data if isinstance(data, list) else [data]
-        for r in rows:
-            m('vo2max', _num(r, 'generic', 'vo2MaxPreciseValue') or _num(r, 'generic', 'vo2MaxValue'))
 
 
 def fetch_day(g, con, day):
     calls = {
-        'summary': lambda: g.get_user_summary(day),
-        'sleep': lambda: g.get_sleep_data(day),
-        'hrv': lambda: g.get_hrv_data(day),
-        'maxmetrics': lambda: g.get_max_metrics(day),
+        'summary': ('/usersummary-service/usersummary/daily', {'calendarDate': day}),
+        'sleep': ('/sleep-service/sleep/dailySleep', {'date': day}),
+        'hrv': (f'/hrv-service/hrv/{day}', None),
     }
-    for kind, call in calls.items():
+    for kind, (path, params) in calls.items():
         try:
-            data = call()
-        except Exception as e:  # one missing endpoint (e.g. HRV on a Fenix 6) must not stop the day
+            data = g.get(path, params) or {}
+        except Exception as e:  # one failing endpoint must not stop the day
             data = {'_error': str(e)[:300]}
-        if data is None:
-            data = {}
         db.put_raw(con, 'garmin', kind, day, data)
-        if not (isinstance(data, dict) and '_error' in data):
+        if '_error' not in data:
             extract_day(con, day, kind, data)
-        time.sleep(PAUSE)
 
 
 def save_activity(con, a):
@@ -115,27 +104,29 @@ def save_activity(con, a):
 
 
 def fetch_activities(g, start, end):
-    # Chunks of 30 days keep each response small.
-    d = start
-    n = 0
-    while d <= end:
-        chunk_end = min(d + timedelta(days=29), end)
-        acts = g.get_activities_by_date(d.isoformat(), chunk_end.isoformat()) or []
+    # Pages of 100, newest first, until the page reaches past the start date.
+    n, offset = 0, 0
+    while True:
+        page = g.get('/activitylist-service/activities/search/activities',
+                     {'start': offset, 'limit': 100, 'startDate': start.isoformat(), 'endDate': end.isoformat()}) or []
         with db.tx() as con:
-            for a in acts:
+            for a in page:
                 save_activity(con, a)
-        n += len(acts)
-        d = chunk_end + timedelta(days=1)
-        time.sleep(PAUSE)
-    return n
+        n += len(page)
+        offset += len(page)
+        oldest = min(((a.get('startTimeLocal') or '')[:10] for a in page), default='')
+        if len(page) < 100 or (oldest and oldest < start.isoformat()):
+            return n
 
 
 def sync(recent_days=4, backfill=True, max_backfill_days=120):
     """Refetch the last few days (Garmin fills them in late), then work backwards through history in slices,
     so a full multi-year backfill spreads over a few nights instead of hammering Garmin at once."""
+    if not has_key():
+        return
     log = db.log_start('garmin')
     try:
-        g = client()
+        g = Client()
         today = date.today()
         days = [today - timedelta(days=i) for i in range(recent_days)]
         if backfill:
@@ -153,10 +144,11 @@ def sync(recent_days=4, backfill=True, max_backfill_days=120):
                 fetch_day(g, con, d.isoformat())
         # Activities: recent window always, full history once.
         acts_from = today - timedelta(days=14)
-        if backfill and not db.kv_get('garmin_activities_backfilled'):
+        full = backfill and not db.kv_get('garmin_activities_backfilled')
+        if full:
             acts_from = date.fromisoformat(HISTORY_START)
         n = fetch_activities(g, acts_from, today)
-        if acts_from.isoformat() == HISTORY_START:
+        if full:
             db.kv_set('garmin_activities_backfilled', True)
         db.log_end(log, 'ok', f'{len(days)} days, {n} activities')
     except Exception as e:

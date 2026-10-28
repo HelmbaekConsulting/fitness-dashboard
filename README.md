@@ -5,7 +5,7 @@ Unraid and syncs itself every day.
 
 | Source | How it gets in | What it gives |
 |---|---|---|
-| Garmin Fenix 6 Pro | Garmin Connect login (unofficial `garminconnect` library), daily | Steps, resting HR, sleep stages, stress, Body Battery, calories burned, intensity minutes, VO2 max, activities with training load. Calories eaten too, if MyFitnessPal syncs to Garmin Connect |
+| Garmin Fenix 6 Pro | Garmin's official Personal API (your own API key), daily | Steps, resting HR, sleep stages and score, overnight HRV, stress, Body Battery, calories burned, intensity minutes, activities with training load. Calories eaten too, if MyFitnessPal syncs to Garmin Connect |
 | Withings Body Scan | Withings public API (OAuth), daily | Weight, fat %, fat and muscle mass, water, bone, visceral fat, pulse wave velocity, vascular age, BMR |
 | MyFitnessPal / Cronometer | CSV export dropped in the import folder | Calories, protein, carbs, fat, fibre per day |
 | Jefit (or Hevy, Strong) | CSV export dropped in the import folder | Sets: exercise, weight, reps |
@@ -13,7 +13,7 @@ Unraid and syncs itself every day.
 Pages: Overview, Body, Training, Recovery, Nutrition, Strength, Setup. Every page has a date filter (30 days to all
 history, or a custom range).
 
-The Fenix 6 has no overnight HRV status or Training Readiness, so those charts stay empty for that watch.
+The Personal API has no VO2 max (its endpoint answers "not found"), so the dashboard doesn't show it.
 
 ## Set up
 
@@ -42,11 +42,11 @@ Without Compose: Docker tab → Add Container, repository `ghcr.io/<you>/fitness
 
 ### 4. Connect
 
-1. **Garmin:** open the container console (Docker tab → container icon → Console) and run
-   `python -m app.cli garmin-login`. Enter the MFA code if asked. The tokens last about a year; after that, run it again.
+1. **Garmin:** in Garmin Connect, create a personal API key (account settings → Personal API) with the longest expiry
+   and set it as `GARMIN_API_KEY`. It's shown only once. When it expires, create a new one and replace it.
 2. **Withings:** open the dashboard, go to Setup, press **Connect Withings** and allow access.
-3. Press **Sync now**. The first run takes the last few days plus 120 days of Garmin history (about 8 minutes, one call
-   per second so Garmin doesn't block the account). Each night it reaches another 120 days back until `HISTORY_START`.
+3. Press **Sync now**. The first run takes the last few days plus 120 days of Garmin history (about 6 minutes, one call
+   per second, because Garmin publishes no rate limit). Each night it reaches another 120 days back until `HISTORY_START`.
    Withings history and all Garmin activities come in on the first run.
 
 ### 5. Food and strength exports

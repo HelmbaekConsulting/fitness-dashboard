@@ -125,7 +125,6 @@ def overview(request: Request):
     kin = q.avg(q.kcal_in(*week))
     hours = sum((a['duration_s'] or 0) for a in q.activities(*week)) / 3600
     load = q.training_load(start, end)
-    vo2 = q.latest('vo2max', end, 120)
     tiles = [
         tile('Weight', w, 'kg', delta=dw, note='change over the range'),
         tile('Body fat', f, '%', delta=df, better='down', note='change over the range'),
@@ -134,7 +133,7 @@ def overview(request: Request):
         tile('Sleep', sl, 'h', '{:.1f}', dsl, 'up', 'nightly, last 7 days'),
         tile('Training', hours, 'h', '{:.1f}', note='last 7 days'),
         tile('Calories eaten', kin, 'kcal', '{:,.0f}', note='daily, last 7 days'),
-        tile('VO2 max', vo2[1] if vo2 else None, '', '{:.0f}', note=f'Garmin estimate, {vo2[0][8:10]}/{vo2[0][5:7]}' if vo2 else ''),
+        tile('Overnight HRV', q.avg(q.daily('hrv_sleep', *week)), 'ms', '{:.0f}', note='last 7 days'),
     ]
     charts = [
         chart('weight', 'Weight', 'kg', trend('Weight', q.daily('weight_kg', start, end))),
@@ -196,7 +195,6 @@ def training(request: Request):
             series('Fatigue (7-day)', [(d, a) for d, _, a in load], 2)]),
         chart('form', 'Form (fitness minus fatigue)', 'load', [series('Form', [(d, c - a) for d, c, a in load], 1, 'bar')],
               'Below zero: carrying fatigue. Well above zero: rested, or losing fitness.', kind='bar'),
-        chart('vo2', 'VO2 max', '', [series('VO2 max', q.daily('vo2max', start, end), 1, 'line')], 'Garmin’s estimate from runs and rides.'),
         chart('intensity', 'Intensity minutes per week', 'min', [series('Intensity minutes', q.weekly(q.daily('intensity_min', start, end), 'sum'), 1, 'bar')],
               'Vigorous minutes count double, as in Garmin Connect.', kind='bar', zero=True),
     ]
@@ -219,8 +217,7 @@ def recovery(request: Request):
         chart('sleep', 'Sleep per night, weekly average', 'h', [series(lbl, q.weekly(q.daily(m, start, end)), slot, 'bar') for lbl, m, slot in stages],
               kind='bar', stacked=True, zero=True),
         chart('rhr', 'Resting heart rate', 'bpm', trend('Resting HR', q.daily('resting_hr', start, end))),
-        chart('hrv', 'Overnight HRV', 'ms', trend('HRV', q.daily('hrv_sleep', start, end)),
-              'The Fenix 6 has no HRV status, so this stays empty unless a newer watch adds it.'),
+        chart('hrv', 'Overnight HRV', 'ms', trend('HRV', q.daily('hrv_sleep', start, end))),
         chart('score', 'Sleep score', '', trend('Sleep score', q.daily('sleep_score', start, end))),
         chart('bb', 'Body Battery', '', [series('Peak', q.rolling(q.daily('body_battery_high', start, end)), 1),
                                          series('Low', q.rolling(q.daily('body_battery_low', start, end)), 2)], '7-day averages.'),
@@ -293,7 +290,7 @@ def setup(request: Request):
     last, recent, counts, imports = q.sync_status()
     return render(request, 'setup', {
         '_range': parse_range(request), 'title': 'Setup', 'last': last, 'recent': recent, 'counts': counts, 'imports': imports,
-        'garmin_ready': garmin.has_tokens(), 'withings_configured': withings.configured(), 'withings_connected': withings.connected(),
+        'garmin_ready': garmin.has_key(), 'withings_configured': withings.configured(), 'withings_connected': withings.connected(),
         'running': jobs.is_running(), 'import_dir': str(IMPORT_DIR), 'sync_time': SYNC_TIME,
         'msg': request.query_params.get('msg', '')})
 
