@@ -12,7 +12,8 @@ Unraid and syncs itself every day.
 
 Pages (every one with a date filter, 30 days to all history or a custom range):
 
-- **Overview:** recovery check, trend weight, measured maintenance calories, muscles trained.
+- **Today:** readiness ring, trend weight with what the change was made of (fat, muscle, the rest), sleep, HRV,
+  resting HR and steps with 30-day or 8-week sparklines, the latest sessions, things worth knowing, energy balance.
 - **Body:** Body Scan segments (arms, legs, trunk) on a body figure, muscle or fat, change and left/right balance.
 - **Muscles:** sets per week per muscle on a front and back figure, or days since each muscle was trained.
 - **Training vs body:** training and Body Scan muscle side by side, with a month slider to play the change.
@@ -98,3 +99,10 @@ Data goes to `data/` (git-ignored). `python -m app.cli sync` runs a sync from th
   3 days against your 30-day average, sleep of the last 3 nights, and fatigue ÷ fitness.
 - **Calories per workout** come from the Garmin activity overlapping the Jefit session. Without one they're estimated
   as 3.5 MET × body weight × session time. Each exercise gets a share by its number of sets.
+- **What the weight change was made of:** the first and latest Body Scan in the range that have weight, fat mass and
+  muscle mass; "the rest" is weight minus fat and muscle (water outside muscle, bone).
+- **Trips** on the Today weight chart: 3 or more days with activities only at places other than your usual ones
+  (Garmin location names seen in at least 3 different months).
+- **Worth knowing** lists only what holds: two weeks under 7 h sleep, a new estimated 1RM in the last 14 days, legs
+  under a third of the upper body's sets, more than a quarter of a weight loss being muscle, strength sessions
+  without a watch recording.

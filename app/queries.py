@@ -185,6 +185,18 @@ def withings_fields():
             for (t, p), v in sorted(groups.items(), key=lambda kv: (kv[0][0] or 0, -1 if kv[0][1] is None else kv[0][1]))]
 
 
+def last_sync():
+    """Latest run per source, summed up for the sidebar: when the newest one started and whether all went well."""
+    with db.connect() as con:
+        rows = con.execute('SELECT s.source, s.started, s.status FROM sync_log s JOIN '
+                           '(SELECT source, MAX(id) AS id FROM sync_log GROUP BY source) m ON s.id = m.id').fetchall()
+    if not rows:
+        return None
+    statuses = {r['status'] for r in rows}
+    state = 'running' if 'running' in statuses else 'ok' if statuses == {'ok'} else 'error'
+    return {'started': max(r['started'] for r in rows), 'state': state, 'sources': sorted(r['source'] for r in rows)}
+
+
 def sync_status():
     with db.connect() as con:
         last = {r['source']: dict(r) for r in con.execute(

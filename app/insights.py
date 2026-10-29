@@ -363,6 +363,37 @@ def calendar(start, end):
     return weeks, active
 
 
+def trips(start, end, min_days=3):
+    """Runs of 3 or more days with activities only away from your usual places, to mark trips on charts. Usual places
+    are the activity locations Garmin names in at least 3 different months of your history."""
+    with db.connect() as con:
+        rows = con.execute("SELECT day, json_extract(json, '$.locationName') AS loc FROM activities "
+                           "WHERE json_extract(json, '$.locationName') IS NOT NULL").fetchall()
+    months = defaultdict(set)
+    for r in rows:
+        months[r['loc']].add(r['day'][:7])
+    home = {loc for loc, ms in months.items() if len(ms) >= 3} or {max(months, key=lambda k: len(months[k]))} if months else set()
+    by_day = defaultdict(list)
+    for r in rows:
+        if start.isoformat() <= r['day'] <= end.isoformat():
+            by_day[r['day']].append(r['loc'])
+    away = sorted(d for d, locs in by_day.items() if not any(loc in home for loc in locs))
+    runs, run = [], []
+    for d in away:
+        if run and (date.fromisoformat(d) - date.fromisoformat(run[-1])).days > 2:
+            runs.append(run)
+            run = []
+        run.append(d)
+    if run:
+        runs.append(run)
+    out = []
+    for run in runs:
+        if len(run) >= min_days:
+            locs = [loc for d in run for loc in by_day[d]]
+            out.append({'from': run[0], 'to': run[-1], 'label': max(set(locs), key=locs.count)})
+    return out
+
+
 # ---- Weight trend and measured maintenance --------------------------------------------------------------------
 
 def trend_weight(start, end, alpha=0.1):
@@ -430,8 +461,10 @@ def readiness(end):
     if line and lo:
         v, low, high = line[-1][1], lo[-1][1], hi[-1][1]
         st = 'good' if low <= v <= high else ('warning' if v > high else 'serious')
-        checks.append({'name': 'HRV', 'value': f'{v:.0f} ms', 'status': st,
-                       'note': f'7-day average; your normal range is {low:.0f}–{high:.0f} ms'})
+        checks.append({'name': 'HRV', 'value': f'{v:.0f} ms', 'num': f'{v:.0f}', 'unit': 'ms', 'status': st,
+                       'note': f'7-day average; your normal range is {low:.0f}–{high:.0f} ms',
+                       'short': f'Your range {low:.0f}–{high:.0f} ms',
+                       'off': f'HRV is {"above" if v > high else "below"} your normal range: {v:.0f} ms against {low:.0f}–{high:.0f}'})
     rhr = q.daily('resting_hr', end - timedelta(days=33), end)
     if len(rhr) >= 10:
         recent = [v for d, v in rhr if d > (end - timedelta(days=3)).isoformat()]
@@ -439,20 +472,26 @@ def readiness(end):
         if recent and base:
             r, b = statistics.mean(recent), statistics.mean(base)
             st = 'good' if r <= b + 2 else 'warning' if r <= b + 5 else 'serious'
-            checks.append({'name': 'Resting HR', 'value': f'{r:.0f} bpm', 'status': st,
-                           'note': f'last 3 days vs your 30-day average of {b:.0f} bpm'})
+            checks.append({'name': 'Resting HR', 'value': f'{r:.0f} bpm', 'num': f'{r:.0f}', 'unit': 'bpm', 'status': st,
+                           'note': f'last 3 days vs your 30-day average of {b:.0f} bpm',
+                           'short': f'30-day average {b:.0f} bpm',
+                           'off': f'Resting heart rate is up: {r:.0f} bpm against your usual {b:.0f}'})
     sleep = [v for d, v in q.daily('sleep_h', end - timedelta(days=2), end)]
     if sleep:
         s = statistics.mean(sleep)
         st = 'good' if s >= 7 else 'warning' if s >= 6 else 'serious'
         h, m = divmod(round(s * 60), 60)
-        checks.append({'name': 'Sleep', 'value': f'{h}:{m:02d} h', 'status': st, 'note': 'average of the last 3 nights; 7 h or more is the usual advice'})
+        checks.append({'name': 'Sleep', 'value': f'{h}:{m:02d} h', 'num': f'{h}:{m:02d}', 'unit': 'h', 'status': st,
+                       'note': 'average of the last 3 nights; 7 h or more is the usual advice', 'short': 'Last 3 nights; 7 h or more',
+                       'off': f'Sleep is short: {h} h {m} min a night over the last three nights'})
     load = q.training_load(end - timedelta(days=1), end)
     if load and load[-1][1] >= 5:
         ratio = load[-1][2] / load[-1][1]
         st = 'good' if ratio <= 1.3 else 'warning' if ratio <= 1.5 else 'serious'
-        checks.append({'name': 'Load', 'value': f'{ratio:.2f}', 'status': st,
-                       'note': 'fatigue ÷ fitness; up to 1.3 is a steady build, above 1.5 a sharp jump'})
+        checks.append({'name': 'Load', 'value': f'{ratio:.2f}', 'num': f'{ratio:.2f}', 'unit': '', 'status': st,
+                       'note': 'fatigue ÷ fitness; up to 1.3 is a steady build, above 1.5 a sharp jump',
+                       'short': 'Fatigue ÷ fitness; steady to 1.3',
+                       'off': f'Load is climbing fast: fatigue is {ratio:.1f} times your fitness'})
     # Watch counts 1, off counts 2: one clearly off signal means take it easier, two or more mean recover.
     if not checks:
         return None, checks

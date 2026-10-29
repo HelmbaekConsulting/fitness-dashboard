@@ -1,0 +1,29 @@
+{# Shared pieces: the readiness card (Today and Recovery). #}
+{% macro readiness_card(r, link=True) %}
+<section class="card ready" aria-labelledby="h-ready">
+  <div class="card-head">
+    <h2 id="h-ready">Readiness</h2>
+    {% if link %}<a class="more-link" href="/recovery">Recovery{{ icon('arrow', 14, 2) }}</a>{% else %}<span class="muted small">vs your own baselines</span>{% endif %}
+  </div>
+  <div class="ready-main">
+    <svg class="ring" width="168" height="168" viewBox="0 0 168 168" role="img" aria-label="Readiness: {{ r.count }}">
+      {% for c in r.checks %}<path d="{{ c.path }}" class="seg st-{{ c.status }}"></path>{% endfor %}
+      <text x="84" y="83" text-anchor="middle" class="ring-word">{{ r.word }}</text>
+      <text x="84" y="104" text-anchor="middle" class="ring-sub">{{ r.count }}</text>
+    </svg>
+    <div class="ready-text">
+      <p class="verdict">{{ r.verdict }}</p>
+      <p class="why">{{ r.text }}</p>
+    </div>
+  </div>
+  <ul class="factors">
+    {% for c in r.checks %}
+    <li>
+      <div class="f-head">{{ c.name }}<span class="tone-{{ c.status }}">{{ icon(c.icon, 14, 2) }}{{ c.label }}</span></div>
+      <div class="f-value">{{ c.num }}{% if c.unit %}<span class="unit">{{ c.unit }}</span>{% endif %}</div>
+      <div class="f-note">{{ c.short }}</div>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endmacro %}

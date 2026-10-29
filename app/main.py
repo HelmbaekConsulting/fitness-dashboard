@@ -6,26 +6,29 @@ from datetime import date, timedelta
 from pathlib import Path
 from urllib.parse import urlencode
 
-from fastapi import FastAPI, File, Request, UploadFile
+from fastapi import FastAPI, File, Form, Request, UploadFile
 from starlette.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from . import db, figure, garmin, imports, insights, jobs, muscles, withings
+from . import db, figure, garmin, icons, imports, insights, jobs, muscles, today, withings
 from . import queries as q
 from .config import DASHBOARD_PASSWORD, IMPORT_DIR, SYNC_TIME
 
 BASE = Path(__file__).parent
 templates = Jinja2Templates(directory=BASE / 'templates')
 templates.env.filters['dmy'] = lambda iso: f'{iso[8:10]}/{iso[5:7]}/{iso[:4]}' if iso else ''
+templates.env.globals['icon'] = icons.icon
 
 RANGES = [('30d', '30 days', 30), ('90d', '90 days', 90), ('6m', '6 months', 182), ('1y', '1 year', 365),
           ('3y', '3 years', 1095), ('all', 'All', None)]
-PAGES = [('overview', 'Overview', '/'), ('body', 'Body', '/body'), ('muscles', 'Muscles', '/muscles'),
-         ('progress', 'Training vs body', '/progress'), ('training', 'Training', '/training'),
-         ('recovery', 'Recovery', '/recovery'), ('nutrition', 'Nutrition', '/nutrition'),
-         ('strength', 'Strength', '/strength'), ('setup', 'Setup', '/setup')]
+# key, label, path, icon. Phones show the first four in the tab bar and the rest under More.
+PAGES = [('today', 'Today', '/', 'sun'), ('body', 'Body', '/body', 'scale'), ('training', 'Training', '/training', 'flame'),
+         ('recovery', 'Recovery', '/recovery', 'heart'), ('muscles', 'Muscles', '/muscles', 'figure'),
+         ('progress', 'Training vs body', '/progress', 'trend'), ('nutrition', 'Nutrition', '/nutrition', 'utensils'),
+         ('strength', 'Strength', '/strength', 'dumbbell'), ('setup', 'Setup', '/setup', 'gear')]
+SIDEBAR_ORDER = ['today', 'body', 'muscles', 'progress', 'training', 'recovery', 'nutrition', 'strength']
 
 
 @asynccontextmanager
@@ -130,11 +133,26 @@ def toggle(request, key, options, current):
     return {'key': key, 'value': current, 'options': out}
 
 
-def render(request, page, ctx):
+def sync_badge():
+    """The sidebar's sync line: state, and when the newest run started."""
+    s = q.last_sync()
+    if not s:
+        return {'state': 'none', 'title': 'Not synced yet', 'when': 'Connect Garmin and Withings in Setup'}
+    when = s['started']
+    day = 'today' if when[:10] == date.today().isoformat() else f'on {when[8:10]}/{when[5:7]}'
+    title = {'running': 'Syncing…', 'ok': 'Up to date', 'error': 'Sync problem'}[s['state']]
+    if s['state'] == 'ok' and when[:10] < (date.today() - timedelta(days=1)).isoformat():
+        title, s['state'] = 'Not synced lately', 'error'
+    return {'state': s['state'], 'title': title, 'when': f'Synced {day} at {when[11:16]}'}
+
+
+def render(request, page, ctx, template='page.html'):
     rng, start, end = ctx.pop('_range')
-    return templates.TemplateResponse(request, f'{"setup" if page == "setup" else "page"}.html', {
-        'page': page, 'pages': PAGES, 'ranges': RANGES, 'range': rng, 'start': start.isoformat(), 'end': end.isoformat(),
-        'query': request.url.query, **ctx})
+    order = {k: i for i, k in enumerate(SIDEBAR_ORDER)}
+    return templates.TemplateResponse(request, template, {
+        'page': page, 'pages': PAGES, 'sidebar': sorted((p for p in PAGES if p[0] in order), key=lambda p: order[p[0]]),
+        'ranges': RANGES, 'range': rng, 'start': start.isoformat(), 'end': end.isoformat(),
+        'query': urlencode([(k, v) for k, v in request.query_params.multi_items() if k != 'msg']), 'sync': sync_badge(), **ctx})
 
 
 # ---- Figures ---------------------------------------------------------------------------------------------------
@@ -177,45 +195,19 @@ def segment_panel(seg, what, title, note=''):
 # ---- Pages -----------------------------------------------------------------------------------------------------
 
 @app.get('/', response_class=HTMLResponse)
-def overview(request: Request):
+def today_page(request: Request):
     rng, start, end = parse_range(request)
-    week, prev = (end - timedelta(days=6), end), (end - timedelta(days=13), end - timedelta(days=7))
-    w, dw = change('weight_kg', start, end)
-    f, df = change('fat_pct', start, end)
-    mu, dmu = change('muscle_kg', start, end)
-    rhr, drhr = avg_change(q.daily('resting_hr', *week), q.daily('resting_hr', *prev))
-    sl, dsl = avg_change(q.daily('sleep_h', *week), q.daily('sleep_h', *prev))
-    hours = sum((a['duration_s'] or 0) for a in q.activities(*week)) / 3600
-    load = q.training_load(start, end)
-    tdee = insights.expenditure(end - timedelta(days=13), end)
-    tw = insights.trend_weight(start, end)
-    tiles = [
-        tile('Trend weight', tw[-1][1] if tw else w, 'kg', delta=(tw[-1][1] - tw[0][1]) if len(tw) > 1 else dw, note='change over the range'),
-        tile('Body fat', f, '%', delta=df, better='down', note='change over the range'),
-        tile('Muscle mass', mu, 'kg', delta=dmu, better='up', note='change over the range'),
-        tile('Resting HR', rhr, 'bpm', '{:.0f}', drhr, 'down', 'last 7 days vs the 7 before'),
-        tile('Sleep', sl, 'h', '{:.1f}', dsl, 'up', 'nightly, last 7 days'),
-        tile('Training', hours, 'h', '{:.1f}', note='last 7 days'),
-        tile('Maintenance', tdee[-1][1] if tdee else None, 'kcal', '{:,.0f}', note='measured from food and weight, 28 days'),
-        tile('Overnight HRV', q.avg(q.daily('hrv_sleep', *week)), 'ms', '{:.0f}', note='last 7 days'),
-    ]
-    vol, _ = insights.muscle_volume(start, end)
+    t = today.build(start, end)
+    b, tr = t['body'], t['training']
     charts = [
-        chart('weight', 'Weight', 'kg', weight_trend(start, end), 'Trend weight smooths out water and food swings.'),
-        chart('energy', 'Calories eaten and burned', 'kcal', [
-            series('Eaten, 7-day avg', q.rolling(q.kcal_in(start, end)), 1),
-            series('Burned (Garmin), 7-day avg', q.rolling(q.daily('total_kcal', start, end)), 2),
-            series('Measured maintenance', insights.expenditure(start, end), 3)],
-            'Measured maintenance is what you ate minus the energy in your trend weight change.'),
-        chart('load', 'Fitness and fatigue', 'load', [
-            series('Fitness (42-day)', [(d, c) for d, c, _ in load], 1),
-            series('Fatigue (7-day)', [(d, a) for d, _, a in load], 2)],
-            'From Garmin’s training load per activity. Fatigue well above fitness means a hard block; below means fresh.'),
-        chart('rhr', 'Resting heart rate', 'bpm', trend('Resting HR', q.daily('resting_hr', start, end))),
+        {**chart('t-weight', 'Weight', 'kg', [series('Weigh-in', b['weighins'], 1, 'dots'), series('Trend weight', b['trend'], 1)],
+                 span=(start, end)), 'legend': False, 'marks': b['trips']},
+        {**chart('t-load', 'Fitness and fatigue', 'load', [series('Fitness', [(d, c) for d, c, _ in tr['load']], 1),
+                                                           series('Fatigue', [(d, a) for d, _, a in tr['load']], 2)]), 'legend': False},
     ]
-    return render(request, 'overview', {'_range': (rng, start, end), 'title': 'Overview', 'tiles': tiles, 'charts': charts,
-                                        'readiness': insights.readiness(end),
-                                        'panels': [muscle_panel(vol, 'volume', 'Muscles trained', 'Sets per week in the range.')]})
+    return render(request, 'today', {'_range': (rng, start, end), 'title': 'Today', 'charts': charts, **t,
+                                     'body_range': toggle(request, 'range', [('30d', '30 days'), ('90d', '90 days'), ('1y', '1 year')], rng),
+                                     'msg': request.query_params.get('msg', '')}, 'today.html')
 
 
 @app.get('/body', response_class=HTMLResponse)
@@ -395,7 +387,7 @@ def recovery(request: Request):
         chart('steps', 'Steps per day, weekly average', 'steps', [series('Steps', q.weekly(q.daily('steps', start, end)), 1, 'bar')], kind='bar', zero=True),
     ]
     return render(request, 'recovery', {'_range': (rng, start, end), 'title': 'Recovery', 'tiles': tiles, 'charts': charts,
-                                        'readiness': insights.readiness(end), 'source': 'Garmin Connect'})
+                                        'ready': today.readiness(end), 'source': 'Garmin Connect'})
 
 
 @app.get('/nutrition', response_class=HTMLResponse)
@@ -479,13 +471,14 @@ def setup(request: Request):
         '_range': parse_range(request), 'title': 'Setup', 'last': last, 'recent': recent, 'counts': counts, 'imports': imports,
         'garmin_ready': garmin.has_key(), 'withings_configured': withings.configured(), 'withings_connected': withings.connected(),
         'running': jobs.is_running(), 'import_dir': str(IMPORT_DIR), 'sync_time': SYNC_TIME,
-        'withings_fields': q.withings_fields(), 'msg': request.query_params.get('msg', '')})
+        'withings_fields': q.withings_fields(), 'msg': request.query_params.get('msg', '')}, 'setup.html')
 
 
 @app.post('/sync')
-def sync_now():
+def sync_now(next: str = Form('/setup')):
     jobs.start_in_background()
-    return RedirectResponse('/setup?msg=Sync+started', 303)
+    target = next if next.startswith('/') and not next.startswith('//') else '/setup'
+    return RedirectResponse(target + ('&' if '?' in target else '?') + 'msg=Sync+started', 303)
 
 
 @app.post('/upload')

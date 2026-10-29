@@ -9,6 +9,9 @@ Personal health and fitness dashboard: FastAPI + Jinja + Chart.js, SQLite, one D
 - `app/queries.py`: basic reads. `app/insights.py`: derived numbers (sets per muscle, segments, workouts with Garmin
   calories, records, HR zones, trend weight, maintenance, readiness). `app/main.py`: pages; each chart is a spec
   rendered by `static/charts.js`.
+- `app/today.py`: the Today page (readiness ring, body card, sparkline tiles, sessions, worth knowing, energy);
+  `app/svg.py` builds its sparkline and ring paths, `app/icons.py` the line icons (`icon('name')` in templates).
+  Layout: sidebar on desktop, bottom tab bar under 760 px (`templates/base.html`); new pages go in `PAGES` in `main.py`.
 - `app/figure.py`: the SVG body figure (front/back, one shape per muscle, tagged with its Withings segment);
   `app/muscles.py`: exercise name → muscles. `static/timeline.js` plays the month frames on "Training vs body".
 - Jefit backups replace all earlier Jefit sets (`source = 'jefit'`); exercises are grouped by Jefit's exercise id.

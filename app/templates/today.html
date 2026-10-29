@@ -1,0 +1,176 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import readiness_card %}
+{% block main %}
+<header class="page-head">
+  <div>
+    <p class="eyebrow">{{ today_long }}</p>
+    <h1>Today</h1>
+  </div>
+  <form method="post" action="/sync">
+    <input type="hidden" name="next" value="/{% if query %}?{{ query }}{% endif %}">
+    <button class="pill-button">{{ icon('refresh', 17, 1.9) }}Sync now</button>
+  </form>
+</header>
+{% if msg %}<p class="flash">{{ msg }}</p>{% endif %}
+
+<div class="row">
+  {% if ready %}
+  <div class="col-5">{{ readiness_card(ready) }}</div>
+  {% else %}
+  <section class="card col-5"><h2>Readiness</h2><p class="empty">Needs a few weeks of sleep, HRV and resting heart rate from Garmin.</p></section>
+  {% endif %}
+
+  {% set b = body %}
+  <section class="card col-7" aria-labelledby="h-body">
+    <div class="card-head">
+      <h2 id="h-body">Body</h2>
+      <div class="head-tools">
+        <div class="segmented">{% for t in body_range.options %}<a href="{{ t.href }}" class="{{ 'on' if t.on else '' }}"{% if t.on %} aria-current="true"{% endif %}>{{ t.label }}</a>{% endfor %}</div>
+        <a class="more-link" href="/body{% if query %}?{{ query }}{% endif %}">Body{{ icon('arrow', 14, 2) }}</a>
+      </div>
+    </div>
+    {% if b.weight %}
+    <div class="body-stats">
+      <div>
+        <div class="stat-label">Trend weight</div>
+        <div class="big">{{ b.weight }}<span class="unit">kg</span></div>
+        {% if b.change %}<div class="stat-change">{{ icon(b.change.dir, 14, 2) }}{{ b.change.text }}</div>{% endif %}
+      </div>
+      {% for s in b.stats %}
+      <div>
+        <div class="stat-label">{{ s.label }}</div>
+        <div class="mid">{{ s.value }}<span class="unit">{{ s.unit }}</span></div>
+        {% if s.change %}<div class="stat-change {{ s.tone }}">{{ icon(s.dir, 14, 2) }}{{ s.change }}</div>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    <figure class="chart-fig">
+      <div class="canvas-wrap t-weight"><canvas id="c-t-weight" role="img" aria-label="Weight and trend weight over the range"></canvas></div>
+      <figcaption class="legend">
+        <span><i class="key-line s1"></i>Trend weight</span>
+        <span><i class="key-dot s1"></i>Weigh-in</span>
+        {% for t in b.trips %}<span><i class="key-box"></i>Trip: {{ t.label }}, {{ t.span }}</span>{% endfor %}
+        <span class="push muted">kg</span>
+      </figcaption>
+    </figure>
+    {% set c = b.composition %}
+    {% if c %}
+    <div class="comp">
+      <div class="comp-head"><h3>{{ c.title }}</h3><span class="muted small">First and latest Body Scan, {{ c.from }} and {{ c.to }}</span></div>
+      {% if c.bar %}
+      <div class="comp-bar" role="img" aria-label="{% for p in c.parts %}{{ p.label }} {{ p.shown }}{{ ', ' if not loop.last }}{% endfor %}">
+        {% for p in c.parts %}<span style="flex: {{ p.flex }} 1 0; background: var(--{{ p.slot }})"></span>{% endfor %}
+      </div>
+      {% endif %}
+      <div class="comp-keys">
+        {% for p in c.parts %}<span><i class="key-sq" style="background: var(--{{ p.slot }})"></i>{{ p.label }}<b>{{ p.shown }}</b>{% if p.pct is not none %}{{ p.pct }}%{% endif %}</span>{% endfor %}
+      </div>
+    </div>
+    {% endif %}
+    {% else %}
+    <p class="empty">No weigh-ins in this range yet. They come in from Withings with the next sync.</p>
+    {% endif %}
+  </section>
+</div>
+
+<div class="row kpis">
+  {% for t in kpis %}
+  <article class="card kpi">
+    <div class="kpi-head"><span class="chip-icon">{{ icon(t.icon, 16) }}</span>{{ t.label }}
+      {% if t.status %}<span class="kpi-status tone-{{ t.status[0] }}">{{ icon(t.status[2], 13, 2) }}<span>{{ t.status[1] }}</span></span>{% endif %}</div>
+    {% if t.value is none %}
+    <div class="kpi-value muted">No data</div>
+    {% else %}
+    <div class="kpi-value">{{ t.value }}<span class="unit">{{ t.unit }}</span></div>
+    <div class="kpi-delta">{{ t.delta }}</div>
+    {% endif %}
+    <svg class="spark" viewBox="0 0 200 44" preserveAspectRatio="none" aria-hidden="true">
+      {% if t.band %}<path d="{{ t.band }}" class="sp-band"></path>{% endif %}
+      {% if t.line %}<path d="{{ t.line }}" class="sp-line" vector-effect="non-scaling-stroke"></path>{% endif %}
+      {% if t.bars %}<path d="{{ t.bars.old }}" class="sp-bar old"></path><path d="{{ t.bars.now }}" class="sp-bar"></path>
+        {% if t.bars.target %}<path d="M0 {{ t.bars.target }}H200" class="sp-target" vector-effect="non-scaling-stroke"></path>{% endif %}{% endif %}
+    </svg>
+    <div class="kpi-foot"><span>{{ t.foot[0] }}</span><span>{{ t.foot[1] }}</span></div>
+  </article>
+  {% endfor %}
+</div>
+
+<div class="row">
+  {% set tr = training %}
+  <section class="card col-7" aria-labelledby="h-train">
+    <div class="card-head">
+      <h2 id="h-train">Training</h2>
+      <a class="more-link" href="/training{% if query %}?{{ query }}{% endif %}">All activities{{ icon('arrow', 14, 2) }}</a>
+    </div>
+    <div class="train-stats">
+      <div><div class="stat-label">Last 7 days</div><div class="mid">{{ tr.week_time.split(' ')[0] }}<span class="unit">{{ tr.week_time.split(' ')[1] }}</span></div>
+        <div class="stat-note">{{ tr.week_n }} session{{ '' if tr.week_n == 1 else 's' }}</div></div>
+      {% if tr.fitness %}
+      <div><div class="stat-label">Fitness</div><div class="mid">{{ tr.fitness }}</div><div class="stat-note">{{ tr.fitness_note }}</div></div>
+      <div><div class="stat-label">Fatigue</div><div class="mid">{{ tr.fatigue }}</div><div class="stat-note">7-day load</div></div>
+      <div><div class="stat-label">Form</div><div class="mid">{{ tr.form }}</div><div class="stat-note">{{ tr.form_note }}</div></div>
+      {% endif %}
+    </div>
+    {% if tr.load %}
+    <figure class="chart-fig">
+      <div class="canvas-wrap t-load"><canvas id="c-t-load" role="img" aria-label="Fitness and fatigue, last 30 days"></canvas></div>
+      <figcaption class="legend">
+        <span><i class="key-line s1"></i>Fitness, 42-day load</span>
+        <span><i class="key-line s2"></i>Fatigue, 7-day load</span>
+        <span class="push muted">Last 30 days</span>
+      </figcaption>
+    </figure>
+    {% endif %}
+    {% if tr.sessions %}
+    <ul class="sessions-list">
+      {% for s in tr.sessions %}
+      <li>
+        <span class="chip-icon lg">{{ icon(s.icon, 20) }}</span>
+        <div class="s-title"><div class="s-name">{{ s.title }}</div><div class="s-sub">{{ s.sub }}</div></div>
+        <dl class="s-metrics">{% for label, value in s.metrics %}<div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>{% endfor %}</dl>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="empty">No sessions in the last 30 days.</p>
+    {% endif %}
+  </section>
+
+  <div class="col-5 stack">
+    <section class="card" aria-labelledby="h-know">
+      <div class="card-head"><h2 id="h-know">Worth knowing</h2><span class="muted small">From your last 90 days</span></div>
+      {% if know %}
+      <ol class="know">
+        {% for k in know %}
+        <li><span class="chip-icon">{{ icon(k.icon, 17) }}</span><div><div class="k-title">{{ k.title }}</div><p>{{ k.text }}</p></div></li>
+        {% endfor %}
+      </ol>
+      {% else %}
+      <p class="note">Nothing stands out in the last 90 days.</p>
+      {% endif %}
+    </section>
+
+    {% if energy %}
+    <section class="card" aria-labelledby="h-energy">
+      <div class="card-head"><h2 id="h-energy">Energy</h2><span class="muted small">kcal a day</span></div>
+      <div class="energy">
+        {% for e in energy.rows %}
+        <div><div class="e-row"><span>{{ e.label }}</span><b>{{ e.value }}</b></div>
+          <div class="e-track"><div style="width: {{ e.pct }}%; background: var(--{{ e.slot }})"></div></div></div>
+        {% endfor %}
+      </div>
+      {% if energy.text %}<p class="e-text">{{ energy.text }}</p>{% endif %}
+    </section>
+    {% endif %}
+  </div>
+</div>
+
+<p class="source">Readiness compares you with your own recent baselines, not population norms. A guide, not a diagnosis.
+  Sources: Garmin Connect, Withings Body Scan, Jefit, MyFitnessPal.</p>
+{% endblock %}
+
+{% block scripts %}
+<script id="chart-data" type="application/json">{{ charts | tojson }}</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="/static/charts.js"></script>
+{% endblock %}

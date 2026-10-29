@@ -1,22 +1,30 @@
 {% extends 'base.html' %}
+{% from 'macros.html' import readiness_card %}
 {% block main %}
-<form class="filters" method="get">
-  <div class="chip-row">
-    {% for key, label, _ in ranges %}
-    <button type="submit" name="range" value="{{ key }}" class="chip {{ 'on' if key == range else '' }}">{{ label }}</button>
-    {% endfor %}
+<header class="page-head">
+  <div>
+    <p class="eyebrow">{{ start | dmy }} – {{ end | dmy }}</p>
+    <h1>{{ title }}</h1>
   </div>
-  <div class="custom">
-    <label>From <input type="date" name="from" value="{{ start }}"></label>
-    <label>To <input type="date" name="to" value="{{ end }}"></label>
+  <form class="filters" method="get">
     {% if picked %}<input type="hidden" name="exercise" value="{{ picked }}">{% endif %}
     {% if toggle %}<input type="hidden" name="{{ toggle.key }}" value="{{ toggle.value }}">{% endif %}
     {% if type_filter %}<input type="hidden" name="type" value="{{ type_filter }}">{% endif %}
-    <button type="submit" class="chip">Apply</button>
-  </div>
-</form>
-
-<h1>{{ title }} <span class="range-text">{{ start | dmy }} – {{ end | dmy }}</span></h1>
+    <div class="segmented chip-row">
+      {% for key, label, _ in ranges %}
+      <button type="submit" name="range" value="{{ key }}" class="{{ 'on' if key == range else '' }}">{{ label }}</button>
+      {% endfor %}
+    </div>
+    <details class="custom"{% if range == 'custom' %} open{% endif %}>
+      <summary class="{{ 'on' if range == 'custom' else '' }}">{{ icon('calendar', 16) }}<span>Dates</span></summary>
+      <div class="custom-body">
+        <label>From <input type="date" name="from" value="{{ start }}"></label>
+        <label>To <input type="date" name="to" value="{{ end }}"></label>
+        <button type="submit" class="button small">Apply</button>
+      </div>
+    </details>
+  </form>
+</header>
 
 {% if toggle %}
 <div class="seg-toggle" role="tablist">{% for t in toggle.options %}<a href="{{ t.href }}" class="{{ 'on' if t.on else '' }}" role="tab" aria-selected="{{ 'true' if t.on else 'false' }}">{{ t.label }}</a>{% endfor %}</div>
@@ -36,22 +44,8 @@
 
 {% if notice %}<p class="flash">{{ notice }}</p>{% endif %}
 
-{% if readiness and readiness[0] %}
-{% set verdict, checks = readiness %}
-<section class="card readiness st-{{ verdict[0] }}">
-  <div class="ready-head">
-    <span class="ready-icon" aria-hidden="true">{{ {'good': '●', 'warning': '▲', 'serious': '■'}[verdict[0]] }}</span>
-    <div><div class="tile-label">Recovery check, {{ end | dmy }}</div><div class="ready-verdict">{{ verdict[1] }}</div></div>
-  </div>
-  <ul class="checks">
-    {% for c in checks %}
-    <li class="st-{{ c.status }}"><span class="ck-icon" aria-hidden="true">{{ {'good': '●', 'warning': '▲', 'serious': '■'}[c.status] }}</span>
-      <b>{{ c.name }}</b> {{ c.value }} <span class="ck-label">{{ {'good': 'normal', 'warning': 'watch', 'serious': 'off'}[c.status] }}</span>
-      <div class="tile-note">{{ c.note }}</div></li>
-    {% endfor %}
-  </ul>
-  <p class="note">Compared with your own recent baselines, not population norms. A guide, not a diagnosis.</p>
-</section>
+{% if ready %}
+<div class="ready-wide">{{ readiness_card(ready, link=False) }}</div>
 {% endif %}
 
 {% if panels %}
@@ -105,7 +99,7 @@
     {% else %}
     <div class="tile-value">{{ t.value }}<span class="unit">{{ t.unit }}</span></div>
     {% endif %}
-    {% if t.delta %}<div class="tile-delta {{ t.tone }}">{% if t.tone == 'good' %}▲{% elif t.tone == 'bad' %}▼{% endif %} {{ t.delta }} {{ t.unit }}</div>{% endif %}
+    {% if t.delta %}<div class="tile-delta {{ t.tone }}">{% if t.tone == 'good' %}{{ icon('check', 13, 2) }}{% elif t.tone == 'bad' %}{{ icon('alert', 13, 2) }}{% endif %}{{ t.delta }} {{ t.unit }}</div>{% endif %}
     {% if t.note %}<div class="tile-note">{{ t.note }}</div>{% endif %}
   </div>
   {% endfor %}
@@ -230,24 +224,24 @@
 <section class="card table-card">
   <figcaption><h2>Activities</h2><span class="unit-tag">{{ activity_count }}{% if activity_count > activity_rows | length %}, newest {{ activity_rows | length }} shown{% endif %}</span></figcaption>
   <div class="chip-row type-chips">{% for c in type_chips %}<a class="chip {{ 'on' if c.on else '' }}" href="{{ c.href }}">{{ c.label }}</a>{% endfor %}</div>
-  <div class="table-wrap"><table class="acts">
+  <div class="table-wrap acts-wrap"><table class="acts">
     <thead><tr><th>Date</th><th>Activity</th><th class="num">Time</th><th class="num">Distance</th><th class="num">Pace</th><th class="num">kcal</th>
       <th class="num">HR avg / max</th><th>HR zones</th><th>Effect</th><th class="num">Load</th><th class="num">Ascent</th><th class="num">Sweat</th><th class="num">More</th></tr></thead>
     <tbody>{% for a in activity_rows %}
       <tr class="{{ 'dup' if a.duplicate else '' }}">
-        <td><span class="when">{{ a.day | dmy }}</span><span class="sub">{{ a.time }}</span></td>
-        <td><span class="act-name">{{ a.name }}</span><span class="sub">{{ a.type_label }}{% if a.source %} · {{ a.source }}{% endif %}{% if a.duplicate %} · <b>duplicate, not counted</b>{% endif %}</span></td>
-        <td class="num">{% if a.duration_s %}{{ (a.duration_s // 3600) | int }}:{{ '%02d' % ((a.duration_s % 3600) // 60) }}{% endif %}</td>
-        <td class="num">{{ '%.2f km' % a.distance_km if a.distance_km else '' }}</td>
-        <td class="num">{{ a.pace or '' }}</td>
-        <td class="num strong">{{ a.kcal | round | int if a.kcal else '' }}</td>
-        <td class="num">{% if a.avg_hr %}{{ a.avg_hr | int }}{% if a.max_hr %} <span class="sub-inline">/ {{ a.max_hr | int }}</span>{% endif %}{% endif %}</td>
-        <td>{% if a.zones %}<span class="zbar" title="{% for z in a.zones %}Zone {{ z.z }}: {{ z.min }} min{{ ', ' if not loop.last }}{% endfor %}">{% for z in a.zones %}{% if z.pct > 0 %}<i class="z{{ z.z }}" style="width: {{ '%.1f' % z.pct }}%"></i>{% endif %}{% endfor %}</span>{% endif %}</td>
-        <td>{% if a.effect %}<span class="effect">{{ a.effect }}</span>{% endif %}{% if a.aerobic %}<span class="sub">{{ '%.1f' % a.aerobic }} aerobic{% if a.anaerobic %} · {{ '%.1f' % a.anaerobic }} anaer.{% endif %}</span>{% endif %}</td>
-        <td class="num">{{ a.load | round | int if a.load else '' }}</td>
-        <td class="num">{{ '%d m' % a.ascent if a.ascent else '' }}</td>
-        <td class="num">{{ '%.1f l' % (a.sweat_ml / 1000) if a.sweat_ml else '' }}</td>
-        <td class="num sub-inline">{% if a.sets %}{{ a.sets }} sets · {{ a.reps }} reps{% elif a.cadence %}{{ a.cadence | round | int }} spm{% elif a.steps %}{{ '{:,}'.format(a.steps) }} steps{% endif %}</td>
+        <td class="c-when"><span class="when">{{ a.day | dmy }}</span><span class="sub">{{ a.time }}</span></td>
+        <td class="c-name"><span class="act-name">{{ a.name }}</span><span class="sub">{{ a.type_label }}{% if a.source %} · {{ a.source }}{% endif %}{% if a.duplicate %} · <b>duplicate, not counted</b>{% endif %}</span></td>
+        <td class="num" data-label="Time">{% if a.duration_s %}{{ (a.duration_s // 3600) | int }}:{{ '%02d' % ((a.duration_s % 3600) // 60) }}{% endif %}</td>
+        <td class="num" data-label="Distance">{{ '%.2f km' % a.distance_km if a.distance_km else '' }}</td>
+        <td class="num" data-label="Pace">{{ a.pace or '' }}</td>
+        <td class="num strong" data-label="kcal">{{ a.kcal | round | int if a.kcal else '' }}</td>
+        <td class="num" data-label="HR avg / max">{% if a.avg_hr %}{{ a.avg_hr | int }}{% if a.max_hr %} <span class="sub-inline">/ {{ a.max_hr | int }}</span>{% endif %}{% endif %}</td>
+        <td class="c-zones" data-label="HR zones">{% if a.zones %}<span class="zbar" title="{% for z in a.zones %}Zone {{ z.z }}: {{ z.min }} min{{ ', ' if not loop.last }}{% endfor %}">{% for z in a.zones %}{% if z.pct > 0 %}<i class="z{{ z.z }}" style="width: {{ '%.1f' % z.pct }}%"></i>{% endif %}{% endfor %}</span>{% endif %}</td>
+        <td class="c-effect" data-label="Effect">{% if a.effect %}<span class="effect">{{ a.effect }}</span>{% endif %}{% if a.aerobic %}<span class="sub">{{ '%.1f' % a.aerobic }} aerobic{% if a.anaerobic %} · {{ '%.1f' % a.anaerobic }} anaer.{% endif %}</span>{% endif %}</td>
+        <td class="num" data-label="Load">{{ a.load | round | int if a.load else '' }}</td>
+        <td class="num" data-label="Ascent">{{ '%d m' % a.ascent if a.ascent else '' }}</td>
+        <td class="num" data-label="Sweat">{{ '%.1f l' % (a.sweat_ml / 1000) if a.sweat_ml else '' }}</td>
+        <td class="num sub-inline" data-label="More">{% if a.sets %}{{ a.sets }} sets · {{ a.reps }} reps{% elif a.cadence %}{{ a.cadence | round | int }} spm{% elif a.steps %}{{ '{:,}'.format(a.steps) }} steps{% endif %}</td>
       </tr>
     {% endfor %}</tbody>
   </table></div>

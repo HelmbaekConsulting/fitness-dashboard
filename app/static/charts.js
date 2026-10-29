@@ -1,6 +1,7 @@
 // Draws the page's charts from the JSON the server embeds. Days are x values in ms on a linear axis, so gaps in the
 // data stay gaps and no date adapter is needed. Colours come from the CSS tokens, so dark mode follows the page.
-(function () {
+// A spec can carry marks ([{from, to, label}], shaded day ranges such as trips) and legend: false when the page draws its own.
+(document.fonts ? document.fonts.ready : Promise.resolve()).then(function () {
   const specs = JSON.parse(document.getElementById('chart-data').textContent);
   const css = getComputedStyle(document.documentElement);
   const v = (name) => css.getPropertyValue(name).trim();
@@ -20,9 +21,29 @@
     return `rgba(${n >> 16}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
   }
 
-  Chart.defaults.font.family = 'system-ui, -apple-system, "Segoe UI", sans-serif';
+  const FONT = 'Inter, system-ui, -apple-system, "Segoe UI", sans-serif';
+  Chart.defaults.font.family = FONT;
   Chart.defaults.font.size = 12;
   Chart.defaults.color = v('--muted');
+
+  const marks = {
+    id: 'marks',
+    beforeDatasetsDraw(chart, args, opts) {
+      const { ctx, chartArea: a, scales: { x } } = chart;
+      ctx.save();
+      for (const m of opts.items || []) {
+        const x0 = Math.max(a.left, x.getPixelForValue(toMs(m.from))), x1 = Math.min(a.right, x.getPixelForValue(toMs(m.to) + 864e5));
+        if (x1 <= x0) continue;
+        ctx.fillStyle = v('--mark');
+        ctx.fillRect(x0, a.top, x1 - x0, a.bottom - a.top);
+        ctx.fillStyle = v('--muted');
+        ctx.font = `500 11px ${FONT}`;
+        ctx.textAlign = 'center';
+        ctx.fillText(m.label, (x0 + x1) / 2, a.top + 12);
+      }
+      ctx.restore();
+    },
+  };
 
   for (const spec of specs) {
     const el = document.getElementById('c-' + spec.id);
@@ -44,17 +65,19 @@
         backgroundColor: alpha(color, 0.35), borderColor: alpha(color, 0.35), order: 2 };
       if (s.style === 'bar') return { ...base, type: 'bar', borderRadius: 4, borderSkipped: 'start', borderWidth: 0,
         barThickness: 'flex', categoryPercentage: 1, barPercentage: 0.9, order: 1 };
-      return { ...base, type: 'line', borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, tension: 0.25,
+      return { ...base, type: 'line', borderWidth: 2.25, pointRadius: 0, pointHoverRadius: 5, tension: 0.25,
         pointHoverBorderColor: v('--surface'), pointHoverBorderWidth: 2, spanGaps: 10 * 864e5, order: 1 };
     });
     const visible = spec.series.filter((s) => s.legend !== false);
     new Chart(el, {
       data: { datasets },
+      plugins: [marks],
       options: {
         responsive: true, maintainAspectRatio: false, animation: false, parsing: true,
         interaction: { mode: 'x', intersect: false },
         plugins: {
-          legend: { display: visible.length > 1, position: 'top', align: 'start',
+          marks: { items: spec.marks || [] },
+          legend: { display: spec.legend !== false && visible.length > 1, position: 'top', align: 'start',
             labels: { usePointStyle: true, pointStyle: 'rectRounded', boxWidth: 10, boxHeight: 10, color: v('--ink-2'),
               filter: (item) => spec.series[item.datasetIndex].legend !== false } },
           tooltip: {
@@ -69,12 +92,12 @@
         },
         scales: {
           x: { type: 'linear', min: isBar && !spec.xmin ? min - step / 2 : min, max: isBar && !spec.xmax ? max + step / 2 : max, stacked: spec.stacked,
-            grid: { display: false }, border: { color: v('--axis') },
+            grid: { display: false }, border: { color: v('--grid') },
             ticks: { maxTicksLimit: 6, maxRotation: 0, callback: (x) => short(x, span) } },
           y: { stacked: spec.stacked, beginAtZero: spec.zero, grid: { color: v('--grid') }, border: { display: false },
-            ticks: { maxTicksLimit: 5, callback: (y) => fmt(y) } },
+            ticks: { maxTicksLimit: 5, padding: 6, callback: (y) => fmt(y) } },
         },
       },
     });
   }
-})();
+});

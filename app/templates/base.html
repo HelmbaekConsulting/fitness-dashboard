@@ -2,22 +2,51 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>{{ title }} · Fitness</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="/static/app.css">
 </head>
 <body>
-<header class="top">
-  <div class="brand">Fitness</div>
-  <nav class="tabs">
-    {% for key, label, href in pages %}
-    <a href="{{ href }}{% if key != 'setup' and query %}?{{ query }}{% endif %}" class="{{ 'on' if key == page else '' }}">{{ label }}</a>
-    {% endfor %}
+{% macro link(p, cls='') -%}
+{%- set key, label, href, ic = p -%}
+<a href="{{ href }}{% if key != 'setup' and query %}?{{ query }}{% endif %}" class="{{ cls }}{{ ' on' if key == page else '' }}"{% if key == page %} aria-current="page"{% endif %}>{{ icon(ic) }}<span>{{ label }}</span></a>
+{%- endmacro %}
+<div class="app">
+  <nav class="side" aria-label="Main">
+    <a class="brand" href="/{% if query %}?{{ query }}{% endif %}"><span class="mark">{{ icon('pulse', 18, 2.2) }}</span>Fitness</a>
+    <div class="side-links">{% for p in sidebar %}{{ link(p) }}{% endfor %}</div>
+    <div class="side-foot">
+      {{ link(pages[-1]) }}
+      {% if sync %}
+      <div class="sync-card st-{{ sync.state }}">
+        <div class="sync-title"><i class="dot"></i>{{ sync.title }}</div>
+        <div>{{ sync.when }}</div>
+        <div class="muted">Garmin · Withings · Jefit</div>
+      </div>
+      {% endif %}
+    </div>
   </nav>
-</header>
-<main>
-{% block main %}{% endblock %}
-</main>
+  <main class="content">
+  {% block main %}{% endblock %}
+  </main>
+</div>
+<nav class="tabbar" aria-label="Main">
+  {% for p in pages[:4] %}{{ link(p, 'tab') }}{% endfor %}
+  {% set more_on = page in ['muscles', 'progress', 'nutrition', 'strength', 'setup'] %}
+  <details class="more{{ ' on' if more_on else '' }}">
+    <summary class="tab">{{ icon('more') }}<span>More</span></summary>
+    <div class="more-menu">{% for p in pages[4:] %}{{ link(p) }}{% endfor %}</div>
+  </details>
+</nav>
+<script>
+  // Open menus (More, custom dates) close on a tap anywhere else.
+  document.addEventListener('click', (e) => {
+    for (const d of document.querySelectorAll('details.more[open], details.custom[open]')) if (!d.contains(e.target)) d.open = false;
+  });
+</script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

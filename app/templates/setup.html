@@ -3,7 +3,7 @@
 {% macro status(r) %}
 {% if r %}<p class="tile-note">Last run {{ r.started[:10] | dmy }} {{ r.started[11:16] }}: <span class="{{ 'ok' if r.status == 'ok' else 'warn' }}">{{ r.status }}</span>{% if r.message %} · {{ r.message[:160] }}{% endif %}</p>{% endif %}
 {% endmacro %}
-<h1>Setup</h1>
+<header class="page-head"><div><p class="eyebrow">Connections, imports and sync</p><h1>Setup</h1></div></header>
 {% if msg %}<p class="flash">{{ msg }}</p>{% endif %}
 
 <section class="setup-grid">
