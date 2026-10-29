@@ -55,7 +55,8 @@ Without Compose: Docker tab → Add Container, repository `ghcr.io/<you>/fitness
   no effort. For macros: MyFitnessPal Premium → Reports → Export, or Cronometer → Settings → Export data → Daily
   nutrition.
 - **Jefit:** export your workout log as CSV from the Jefit web app.
-- Save the files to the `fitness-import` share. They're imported within 15 minutes and moved to `done/` (or `failed/`
+- Upload the files on the Setup page (imported straight away), or save them to the `fitness-import` share. Files in
+  the share are imported within 15 minutes and moved to `done/` (or `failed/`
   with an `.error.txt` saying why). Exporting an overlapping range again is fine: days are replaced, not doubled.
 
 The importer recognises files by their column names. If a Jefit file lands in `failed/`, the error lists its columns
