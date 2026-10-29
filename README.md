@@ -54,7 +54,8 @@ Without Compose: Docker tab → Add Container, repository `ghcr.io/<you>/fitness
 - **Food:** in MyFitnessPal, connect Garmin Connect (Settings → Sharing & Privacy → Connected apps) for calories with
   no effort. For macros: MyFitnessPal Premium → Reports → Export, or Cronometer → Settings → Export data → Daily
   nutrition.
-- **Jefit:** export your workout log as CSV from the Jefit web app.
+- **Jefit:** export your data from Jefit (one CSV with all sections: settings, profile, routines, logs). The importer
+  reads its EXERCISE LOGS section, in the weight unit set in Jefit. Importing a newer export again replaces the old sets.
 - Upload the files on the Setup page (imported straight away), or save them to the `fitness-import` share. Files in
   the share are imported within 15 minutes and moved to `done/` (or `failed/`
   with an `.error.txt` saying why). Exporting an overlapping range again is fine: days are replaced, not doubled.

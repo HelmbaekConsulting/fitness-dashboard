@@ -95,15 +95,16 @@ def import_nutrition(rows, headers, fname):
     return len(totals)
 
 
-def import_strength(rows, headers, fname):
+def import_strength(rows, headers, fname, factor=None):
     date_col = _find(headers, 'date', 'workout date', 'log date', 'start time', 'mydate')
     ex_col = _find(headers, 'exercise', 'exercise name', 'exercise title', 'ename', 'name')
     w_col = _find(headers, 'weight kg', 'weight', 'weight lbs', 'kg', 'lbs')
     reps_col = _find(headers, 'reps', 'rep', 'repetitions')
     logs_col = _find(headers, 'logs', 'sets')
     type_col = _find(headers, 'set type', 'type')
-    in_lb = 'lb' in _norm(w_col or '') or any('lbs' in _norm(h) for h in headers)
-    factor = LB if in_lb else 1.0
+    if factor is None:
+        in_lb = 'lb' in _norm(w_col or '') or any('lbs' in _norm(h) for h in headers)
+        factor = LB if in_lb else 1.0
     parse = _date_parser([r[date_col] for r in rows])
     out = []
     counter = defaultdict(int)
@@ -140,6 +141,29 @@ def detect(headers):
     return None
 
 
+def _section(text, title):
+    """One section of a Jefit backup: the CSV between '### TITLE ###' and the next '#' line."""
+    out, inside = [], False
+    for line in text.splitlines():
+        if line.startswith('### ' + title + ' '):
+            inside = True
+        elif inside and line.startswith('#'):
+            break
+        elif inside and line.strip():
+            out.append(line)
+    return list(csv.DictReader(io.StringIO('\n'.join(out))))
+
+
+def import_jefit_backup(text, fname):
+    # Jefit's account export ("Export data") stacks a dozen CSV sections in one file. EXERCISE LOGS has every
+    # session since the first, sets written as "41x8,41x7", in the unit chosen in Jefit's settings ("mass").
+    unit = (_section(text, 'SETTING') or [{}])[0].get('mass', '').strip().lower()
+    rows = _section(text, 'EXERCISE LOGS')
+    if not rows:
+        raise ValueError('Jefit backup without an EXERCISE LOGS section')
+    return import_strength(rows, list(rows[0].keys()), fname, LB if unit.startswith('lb') else 1.0)
+
+
 def import_file(path):
     raw = path.read_bytes()
     sha = hashlib.sha256(raw).hexdigest()
@@ -147,6 +171,11 @@ def import_file(path):
         if con.execute('SELECT 1 FROM imports WHERE sha=?', (sha,)).fetchone():
             return 'duplicate', 0
     text = raw.decode('utf-8-sig', errors='replace')
+    if '### EXERCISE LOGS' in text:
+        n = import_jefit_backup(text, path.name)
+        with db.tx() as con:
+            con.execute('INSERT OR REPLACE INTO imports VALUES (?,?,?,?,?)', (sha, path.name, 'strength', n, db.now()))
+        return 'strength (Jefit backup)', n
     sample = text[:4096]
     dialect = csv.Sniffer().sniff(sample, delimiters=',;\t') if sample else csv.excel
     reader = csv.DictReader(io.StringIO(text), dialect=dialect)
