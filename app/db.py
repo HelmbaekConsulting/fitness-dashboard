@@ -36,7 +36,17 @@ CREATE TABLE IF NOT EXISTS sync_log (
   finished TEXT, status TEXT, message TEXT
 );
 CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS workouts (
+  id TEXT PRIMARY KEY, day TEXT NOT NULL, start_ts INTEGER, end_ts INTEGER, duration_s REAL,
+  volume_kg REAL, exercises INTEGER, source TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS workouts_day ON workouts(day);
 """
+
+# Columns added after the first version: (table, column, type).
+COLUMNS = [
+    ('sets', 'eid', 'TEXT'), ('sets', 'session', 'TEXT'), ('sets', 'log_ts', 'INTEGER'), ('sets', 'source', 'TEXT'),
+]
 
 _lock = threading.Lock()
 
@@ -51,6 +61,9 @@ def connect():
 def init():
     with connect() as con:
         con.executescript(SCHEMA)
+        for table, col, typ in COLUMNS:
+            if col not in {r['name'] for r in con.execute(f'PRAGMA table_info({table})')}:
+                con.execute(f'ALTER TABLE {table} ADD COLUMN {col} {typ}')
 
 
 @contextmanager

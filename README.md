@@ -10,8 +10,15 @@ Unraid and syncs itself every day.
 | MyFitnessPal / Cronometer | CSV export dropped in the import folder | Calories, protein, carbs, fat, fibre per day |
 | Jefit (or Hevy, Strong) | CSV export dropped in the import folder | Sets: exercise, weight, reps |
 
-Pages: Overview, Body, Training, Recovery, Nutrition, Strength, Setup. Every page has a date filter (30 days to all
-history, or a custom range).
+Pages (every one with a date filter, 30 days to all history or a custom range):
+
+- **Overview:** recovery check, trend weight, measured maintenance calories, muscles trained.
+- **Body:** Body Scan segments (arms, legs, trunk) on a body figure, muscle or fat, change and left/right balance.
+- **Muscles:** sets per week per muscle on a front and back figure, or days since each muscle was trained.
+- **Training vs body:** training and Body Scan muscle side by side, with a month slider to play the change.
+- **Training:** calendar, time in heart-rate zones, fitness and fatigue. **Recovery:** HRV against your normal
+  range, sleep, resting HR. **Nutrition:** measured vs Garmin maintenance, macros. **Strength:** lifts, records,
+  sessions with calories per exercise.
 
 The Personal API has no VO2 max (its endpoint answers "not found"), so the dashboard doesn't show it.
 
@@ -81,3 +88,13 @@ Data goes to `data/` (git-ignored). `python -m app.cli sync` runs a sync from th
 - **Estimated 1RM** uses the Epley formula, weight × (1 + reps / 30), on sets of 12 reps or fewer. Warm-up sets are
   skipped when the export marks them.
 - When both a food export and the Garmin calorie sync have a day, the export wins.
+- **Sets per muscle:** each exercise is matched to muscles by name (`app/muscles.py`); a set counts 1 for the main
+  muscles and ½ for the helpers. The figures colour sets per week against the common 10–20 sets guideline.
+- **Body Scan segments** come from Withings measure types 173–175 with a body position. The Setup page lists the
+  types and positions received, to check the mapping.
+- **Trend weight** smooths weigh-ins by 10% a day (The Hacker's Diet). **Measured maintenance** is average calories
+  eaten minus 7,700 kcal per kg of trend weight change over 28 days, with at least 18 days logged.
+- **Recovery check:** HRV 7-day average against your 60-day average ± one standard deviation, resting HR of the last
+  3 days against your 30-day average, sleep of the last 3 nights, and fatigue ÷ fitness.
+- **Calories per workout** come from the Garmin activity overlapping the Jefit session. Without one they're estimated
+  as 3.5 MET × body weight × session time. Each exercise gets a share by its number of sets.

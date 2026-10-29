@@ -15,6 +15,7 @@
   const fmt = (x) => Math.abs(x) >= 1000 ? Math.round(x).toLocaleString('en-GB') : (Math.round(x * 10) / 10).toString();
 
   function alpha(hex, a) {
+    if (!hex.startsWith('#')) return hex;
     const n = parseInt(hex.slice(1), 16);
     return `rgba(${n >> 16}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
   }
@@ -27,14 +28,18 @@
     const el = document.getElementById('c-' + spec.id);
     if (!el) continue;
     const all = spec.series.flatMap((s) => s.data.map((p) => toMs(p[0])));
-    const min = Math.min(...all), max = Math.max(...all), span = max - min;
+    const min = spec.xmin ? toMs(spec.xmin) : Math.min(...all), max = spec.xmax ? toMs(spec.xmax) : Math.max(...all), span = max - min;
     const isBar = spec.kind === 'bar';
     // Bars get a width in ms: a week for weekly totals, a day otherwise.
     const firstBar = spec.series.find((s) => s.style === 'bar' && s.data.length > 1);
     const step = firstBar ? toMs(firstBar.data[1][0]) - toMs(firstBar.data[0][0]) : 864e5;
     const datasets = spec.series.map((s) => {
-      const color = v('--s' + s.slot);
+      // slot: a categorical slot number, or a token name such as 'l3' for ordered ramps (HR zones).
+      const color = v(typeof s.slot === 'number' ? '--s' + s.slot : '--' + s.slot);
       const base = { label: s.label, data: s.data.map((p) => ({ x: toMs(p[0]), y: p[1] })), borderColor: color, backgroundColor: color };
+      // A band is two datasets: the low edge (invisible) and the high edge, filled down to it.
+      if (s.style === 'band_lo' || s.style === 'band_hi') return { ...base, type: 'line', borderWidth: 0, pointRadius: 0,
+        pointHoverRadius: 0, tension: 0.25, backgroundColor: alpha(color, 0.14), fill: s.style === 'band_hi' ? '-1' : false, order: 3 };
       if (s.style === 'dots') return { ...base, type: 'line', showLine: false, pointRadius: 2, pointHoverRadius: 5,
         backgroundColor: alpha(color, 0.35), borderColor: alpha(color, 0.35), order: 2 };
       if (s.style === 'bar') return { ...base, type: 'bar', borderRadius: 4, borderSkipped: 'start', borderWidth: 0,
@@ -55,6 +60,7 @@
           tooltip: {
             backgroundColor: v('--surface'), titleColor: v('--ink'), bodyColor: v('--ink-2'), borderColor: v('--border'),
             borderWidth: 1, padding: 10, usePointStyle: true, boxPadding: 4,
+            filter: (item) => !String(spec.series[item.datasetIndex].style).startsWith('band'),
             callbacks: {
               title: (items) => items.length ? (step >= 6 * 864e5 && isBar ? 'Week of ' : '') + dmy(items[0].parsed.x) : '',
               label: (item) => ` ${item.dataset.label}: ${fmt(item.parsed.y)}${spec.unit ? ' ' + spec.unit : ''}`,
@@ -62,7 +68,7 @@
           },
         },
         scales: {
-          x: { type: 'linear', min: isBar ? min - step / 2 : min, max: isBar ? max + step / 2 : max, stacked: spec.stacked,
+          x: { type: 'linear', min: isBar && !spec.xmin ? min - step / 2 : min, max: isBar && !spec.xmax ? max + step / 2 : max, stacked: spec.stacked,
             grid: { display: false }, border: { color: v('--axis') },
             ticks: { maxTicksLimit: 6, maxRotation: 0, callback: (x) => short(x, span) } },
           y: { stacked: spec.stacked, beginAtZero: spec.zero, grid: { color: v('--grid') }, border: { display: false },

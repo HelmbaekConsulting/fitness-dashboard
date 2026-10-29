@@ -10,11 +10,16 @@
     <label>From <input type="date" name="from" value="{{ start }}"></label>
     <label>To <input type="date" name="to" value="{{ end }}"></label>
     {% if picked %}<input type="hidden" name="exercise" value="{{ picked }}">{% endif %}
+    {% if toggle %}<input type="hidden" name="{{ toggle.key }}" value="{{ toggle.value }}">{% endif %}
     <button type="submit" class="chip">Apply</button>
   </div>
 </form>
 
 <h1>{{ title }} <span class="range-text">{{ start | dmy }} – {{ end | dmy }}</span></h1>
+
+{% if toggle %}
+<div class="seg-toggle" role="tablist">{% for t in toggle.options %}<a href="{{ t.href }}" class="{{ 'on' if t.on else '' }}" role="tab" aria-selected="{{ 'true' if t.on else 'false' }}">{{ t.label }}</a>{% endfor %}</div>
+{% endif %}
 
 {% if lifts is defined %}
 <form class="lift-pick" method="get">
@@ -28,6 +33,68 @@
 </form>
 {% endif %}
 
+{% if notice %}<p class="flash">{{ notice }}</p>{% endif %}
+
+{% if readiness and readiness[0] %}
+{% set verdict, checks = readiness %}
+<section class="card readiness st-{{ verdict[0] }}">
+  <div class="ready-head">
+    <span class="ready-icon" aria-hidden="true">{{ {'good': '●', 'warning': '▲', 'serious': '■'}[verdict[0]] }}</span>
+    <div><div class="tile-label">Recovery check, {{ end | dmy }}</div><div class="ready-verdict">{{ verdict[1] }}</div></div>
+  </div>
+  <ul class="checks">
+    {% for c in checks %}
+    <li class="st-{{ c.status }}"><span class="ck-icon" aria-hidden="true">{{ {'good': '●', 'warning': '▲', 'serious': '■'}[c.status] }}</span>
+      <b>{{ c.name }}</b> {{ c.value }} <span class="ck-label">{{ {'good': 'normal', 'warning': 'watch', 'serious': 'off'}[c.status] }}</span>
+      <div class="tile-note">{{ c.note }}</div></li>
+    {% endfor %}
+  </ul>
+  <p class="note">Compared with your own recent baselines, not population norms. A guide, not a diagnosis.</p>
+</section>
+{% endif %}
+
+{% if panels %}
+<section class="panels {{ 'panels-2' if panels | length > 1 else '' }}">
+  {% for p in panels %}
+  <figure class="card panel">
+    <figcaption><h2>{{ p.title }}</h2></figcaption>
+    {% if p.empty %}
+    <div class="empty">No Body Scan segment data in this range yet. It comes in with the next Withings sync.</div>
+    {% else %}
+    <div class="panel-body">
+      <div class="figs">{% for s in p.svgs %}{{ s }}{% endfor %}</div>
+      {% if p.rows %}
+      <table class="seg-rows">
+        {% for r in p.rows %}
+        <tr><td>{{ r.label }}</td><td class="num">{{ '%.2f' % r.value if r.value is not none else '–' }} kg</td>
+          <td class="num tile-delta {{ r.tone }}">{% if r.change is not none %}{{ '%+.2f' % r.change }} kg{% if r.pct is not none %} ({{ '%+.1f' % r.pct }}%){% endif %}{% endif %}</td></tr>
+        {% endfor %}
+      </table>
+      {% endif %}
+    </div>
+    <div class="ramp" aria-label="{{ p.legend_title }}">
+      <span class="ramp-title">{{ p.legend_title }}</span>
+      {% for cls, label in p.legend %}<span class="sw"><i style="background: var(--{{ cls }})"></i>{{ label }}</span>{% endfor %}
+    </div>
+    {% endif %}
+    {% if p.note %}<p class="note">{{ p.note }}</p>{% endif %}
+  </figure>
+  {% endfor %}
+</section>
+{% if frames %}
+<section class="card timeline">
+  <div class="tl-row">
+    <button type="button" class="button" id="tl-play" aria-label="Play the months">▶ Play</button>
+    <input type="range" id="tl-slider" min="0" max="{{ frames | length - 1 }}" value="{{ frames | length - 1 }}" aria-label="Month">
+    <span id="tl-month" class="tl-month">{{ frames[-1].month }}</span>
+  </div>
+  <p class="note">Drag or play to step through the months: left, sets per week that month; right, Body Scan muscle mass that month compared with the first month of the range.</p>
+</section>
+<script id="frames" type="application/json">{{ frames | tojson }}</script>
+{% endif %}
+{% endif %}
+
+{% if tiles %}
 <section class="tiles">
   {% for t in tiles %}
   <div class="tile">
@@ -42,7 +109,34 @@
   </div>
   {% endfor %}
 </section>
+{% endif %}
 
+{% if calendar %}
+<section class="card table-card">
+  <figcaption><h2>Training calendar</h2><span class="unit-tag">{{ calendar_active }} active days since {{ calendar_from | dmy }}</span></figcaption>
+  <div class="cal-wrap"><div class="cal">
+    {% for week in calendar %}<div class="cal-week">{% for d in week %}<i class="{{ d.cls }}{{ ' out' if d.out else '' }}" title="{{ d.day | dmy }}: {{ d.minutes }} min"></i>{% endfor %}</div>{% endfor %}
+  </div></div>
+  <div class="ramp"><span class="ramp-title">Minutes</span><span class="sw"><i style="background: var(--fig-base)"></i>rest</span>
+    <span class="sw"><i style="background: var(--l2)"></i>under 30</span><span class="sw"><i style="background: var(--l4)"></i>30–60</span><span class="sw"><i style="background: var(--l6)"></i>over 60</span></div>
+</section>
+{% endif %}
+
+{% if pairs %}
+<section class="pairs">
+  {% for p in pairs %}
+  <div class="card pair">
+    <h2>{{ p.label }}</h2>
+    <p class="tile-note">{{ '%.1f' % p.sets_week }} sets per week{% if p.change is not none %} · muscle {{ '%+.2f' % p.change }} kg over the range{% else %} · no Body Scan data{% endif %}</p>
+    {% for c in p.charts %}
+    <div class="pair-chart"><div class="pair-title">{{ c.title }}</div>
+      {% if c.empty %}<div class="empty">No data for this range yet.</div>{% else %}<div class="canvas-wrap short"><canvas id="c-{{ c.id }}"></canvas></div>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+</section>
+{% elif charts %}
 <section class="charts">
   {% for c in charts %}
   <figure class="card">
@@ -56,6 +150,53 @@
   </figure>
   {% endfor %}
 </section>
+{% endif %}
+
+{% if muscle_rows %}
+<section class="card table-card">
+  <h2>Muscles</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Muscle</th><th class="num">Sets/week</th><th>Status</th><th>Last trained</th><th>Area</th></tr></thead>
+    <tbody>{% for m in muscle_rows %}
+      <tr><td>{{ m.label }}</td><td class="num">{{ '%.1f' % m.per_week }}</td>
+        <td class="st-{{ m.status[0] }}"><span aria-hidden="true">{{ m.status[1] }}</span> {{ m.status[2] }}</td>
+        <td>{% if m.last %}{{ m.last | dmy }} ({{ m.days_since }} d){% else %}–{% endif %}</td><td>{{ m.segment | capitalize }}</td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+  {% if unmapped %}<p class="note">Not matched to a muscle yet: {% for n, c in unmapped %}{{ n }} ({{ c }} sets){{ ', ' if not loop.last }}{% endfor %}.</p>{% endif %}
+</section>
+{% endif %}
+
+{% if records %}
+<section class="card table-card">
+  <h2>Personal records</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Date</th><th>Exercise</th><th>Set</th><th class="num">e1RM</th><th class="num">Previous best</th></tr></thead>
+    <tbody>{% for r in records %}
+      <tr><td>{{ r.day | dmy }}</td><td>{{ r.exercise }}</td><td>{{ r.set }}</td><td class="num">{{ '%.1f' % r.e1rm }}</td><td class="num">{{ '%.1f' % r.previous }}</td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+</section>
+{% endif %}
+
+{% if workouts %}
+<section class="card table-card">
+  <h2>Sessions</h2>
+  <div class="table-wrap"><table class="sessions">
+    <thead><tr><th>Date</th><th class="num">Time</th><th class="num">Volume</th><th class="num">kcal</th><th class="num">Avg HR</th><th>Exercises (kcal each)</th></tr></thead>
+    <tbody>{% for w in workouts %}
+      <tr><td>{{ w.day | dmy }}</td>
+        <td class="num">{% if w.duration_s %}{{ (w.duration_s // 60) | int }} min{% endif %}</td>
+        <td class="num">{{ '{:,.0f}'.format(w.volume_kg) if w.volume_kg else '' }}</td>
+        <td class="num">{% if w.kcal %}{{ w.kcal | round | int }}{% if w.kcal_source == 'estimate' %} <span class="est">est.</span>{% endif %}{% else %}–{% endif %}</td>
+        <td class="num">{{ w.avg_hr | int if w.avg_hr else '–' }}</td>
+        <td class="details">{% for e in w.exercise_list %}{{ e.exercise }}{% if e.kcal %} ({{ e.kcal }}){% endif %}{{ ', ' if not loop.last }}{% endfor %}</td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+  <p class="note">kcal comes from the Garmin activity recorded at the same time. "est." means no watch recording: 3.5 MET × your weight × session time
+    (the standard figure for resistance training). Each exercise gets a share by its number of sets. Start a Strength activity on the watch for measured values and heart rate.</p>
+</section>
+{% endif %}
 
 {% if summary %}
 <section class="card table-card">
@@ -90,7 +231,8 @@
 {% endblock %}
 
 {% block scripts %}
-<script id="chart-data" type="application/json">{{ charts | tojson }}</script>
+<script id="chart-data" type="application/json">{{ (charts or []) | tojson }}</script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="/static/charts.js"></script>
+{% if frames %}<script src="/static/timeline.js"></script>{% endif %}
 {% endblock %}

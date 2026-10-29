@@ -154,6 +154,18 @@ def avg(points):
     return sum(v for _, v in points) / len(points) if points else None
 
 
+def withings_fields():
+    """Measure types and body positions Withings has sent, to check the segment mapping against real data."""
+    groups = defaultdict(list)
+    with db.connect() as con:
+        for r in con.execute("SELECT json_extract(m.value, '$.type') AS t, json_extract(m.value, '$.position') AS p, "
+                             "json_extract(m.value, '$.value') AS v, json_extract(m.value, '$.unit') AS u "
+                             "FROM raw, json_each(raw.json, '$.measures') AS m WHERE raw.source = 'withings'"):
+            groups[(r['t'], r['p'])].append(r['v'] * 10 ** r['u'])
+    return [{'type': t, 'position': p, 'n': len(v), 'avg': round(sum(v) / len(v), 2)}
+            for (t, p), v in sorted(groups.items(), key=lambda kv: (kv[0][0] or 0, -1 if kv[0][1] is None else kv[0][1]))]
+
+
 def sync_status():
     with db.connect() as con:
         last = {r['source']: dict(r) for r in con.execute(

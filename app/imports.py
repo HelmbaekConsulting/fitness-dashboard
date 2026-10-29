@@ -127,7 +127,7 @@ def import_strength(rows, headers, fname, factor=None):
                 out.append((day, ex, counter[(day, ex)], float(w) * factor, int(reps)))
     with db.tx() as con:
         for day, ex, n, w, reps in out:
-            con.execute('INSERT OR REPLACE INTO sets (day, exercise, set_no, weight_kg, reps, source_file) VALUES (?,?,?,?,?,?)',
+            con.execute("INSERT OR REPLACE INTO sets (day, exercise, set_no, weight_kg, reps, source_file, source) VALUES (?,?,?,?,?,?,'csv')",
                         (day, ex, n, round(w, 2), reps, fname))
     return len(out)
 
@@ -156,14 +156,46 @@ def _section(text, title):
 
 def import_jefit_backup(text, fname):
     # Jefit's account export ("Export data") stacks a dozen CSV sections in one file. EXERCISE LOGS has every
-    # session since the first, sets written as "41x8,41x7", in the unit chosen in Jefit's settings ("mass").
+    # exercise done since the first session, sets written as "41x8,41x7", in the unit chosen in Jefit's settings
+    # ("mass"). The same exercise id can carry several names over the years (or none), so names are taken per id
+    # from its latest log. The backup is the full history, so it replaces all sets from earlier Jefit imports.
     unit = (_section(text, 'SETTING') or [{}])[0].get('mass', '').strip().lower()
     factor = LB if unit.startswith('lb') else 1.0
     rows = _section(text, 'EXERCISE LOGS')
     if not rows:
         raise ValueError('Jefit backup without an EXERCISE LOGS section')
-    n = import_strength(rows, list(rows[0].keys()), fname, factor)
-    return n, import_jefit_profile(_section(text, 'PROFILE'), factor)
+    names = {}
+    for r in sorted(rows, key=lambda r: r.get('mydate') or ''):
+        if (r.get('ename') or '').strip():
+            names[r.get('eid')] = re.sub(r'\s+', ' ', r['ename']).strip()
+    out, counter = [], defaultdict(int)
+    for r in rows:
+        day = (r.get('mydate') or '')[:10]
+        if not re.match(r'^\d{4}-\d{2}-\d{2}$', day):
+            continue
+        eid = r.get('eid') or ''
+        ex = names.get(eid) or f'Exercise {eid}'
+        log_ts = int(_num(r.get('logTime')) or 0) or None
+        for w, reps in re.findall(r'(\d+(?:\.\d+)?)\s*[x×]\s*(\d+)', r.get('logs') or ''):
+            counter[(day, ex)] += 1
+            out.append((day, ex, counter[(day, ex)], round(float(w) * factor, 2), int(reps), fname, eid,
+                        r.get('belongsession') or None, log_ts))
+    sessions = []
+    for s in _section(text, 'WORKOUT SESSIONS'):
+        start, end = int(_num(s.get('starttime')) or 0), int(_num(s.get('endtime')) or 0)
+        if not start:
+            continue
+        day = datetime.fromtimestamp(start).date().isoformat()
+        sessions.append((s.get('_id'), day, start, end or None, _num(s.get('total_time')), (_num(s.get('total_weight')) or 0) * factor,
+                         int(_num(s.get('total_exercise')) or 0)))
+    first = min(d[0] for d in out) if out else '9999'
+    with db.tx() as con:
+        con.execute("DELETE FROM sets WHERE (source = 'jefit' OR source IS NULL) AND day >= ?", (first,))
+        con.executemany('INSERT OR REPLACE INTO sets (day, exercise, set_no, weight_kg, reps, source_file, eid, session, log_ts, source) '
+                        "VALUES (?,?,?,?,?,?,?,?,?,'jefit')", out)
+        con.execute("DELETE FROM workouts WHERE source = 'jefit'")
+        con.executemany("INSERT OR REPLACE INTO workouts VALUES (?,?,?,?,?,?,?,'jefit')", sessions)
+    return len(out), import_jefit_profile(_section(text, 'PROFILE'), factor), len(sessions)
 
 
 def import_jefit_profile(rows, factor):
@@ -194,10 +226,10 @@ def import_file(path):
         if not jefit and con.execute('SELECT 1 FROM imports WHERE sha=?', (sha,)).fetchone():
             return 'duplicate', 0
     if jefit:
-        n, body = import_jefit_backup(text, path.name)
+        n, body, sessions = import_jefit_backup(text, path.name)
         with db.tx() as con:
-            con.execute('INSERT OR REPLACE INTO imports VALUES (?,?,?,?,?)', (sha, path.name, 'strength', n, db.now()))
-        return f'Jefit backup, {body} weight and body fat entries, strength', n
+            con.execute('INSERT OR REPLACE INTO imports VALUES (?,?,?,?,?)', (sha, path.name, 'jefit', n, db.now()))
+        return f'Jefit backup, {sessions} sessions, {body} weight and body fat entries, sets', n
     sample = text[:4096]
     dialect = csv.Sniffer().sniff(sample, delimiters=',;\t') if sample else csv.excel
     reader = csv.DictReader(io.StringIO(text), dialect=dialect)
