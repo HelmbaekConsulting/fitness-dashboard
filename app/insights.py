@@ -177,6 +177,8 @@ def _garmin_activities():
     out = []
     for r in rows:
         a = json.loads(r['json'] or '{}')
+        if a.get('manualActivity') or a.get('isManualActivity'):
+            continue  # typed-in entries (e.g. from MyFitnessPal) carry no measured calories or heart rate
         try:
             t0 = datetime.strptime(a['startTimeGMT'][:19], '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc).timestamp()
         except (KeyError, ValueError, TypeError):
@@ -255,7 +257,74 @@ def records(start, end, limit=25):
     return sorted(out, key=lambda r: r['day'], reverse=True)[:limit]
 
 
-# ---- Training: HR zones and calendar ---------------------------------------------------------------------------
+# ---- Training: activity list, HR zones and calendar ------------------------------------------------------------
+
+EFFECT_LABELS = {'RECOVERY': 'Recovery', 'AEROBIC_BASE': 'Base', 'TEMPO': 'Tempo', 'LACTATE_THRESHOLD': 'Threshold',
+                 'VO2MAX': 'VO2 max', 'ANAEROBIC_CAPACITY': 'Anaerobic', 'SPEED': 'Speed', 'NO_BENEFIT': 'No benefit'}
+PACE_TYPES = ('running', 'treadmill_running', 'trail_running', 'walking', 'hiking')
+
+
+def type_label(t):
+    return (t or 'other').replace('_', ' ').capitalize()
+
+
+def _pace(a, t):
+    """Pace (min/km) for runs and walks, speed (km/h) for rides, nothing for the rest."""
+    sp = a.get('averageSpeed') or 0
+    if sp <= 0 or not a.get('distance'):
+        return None
+    if t in PACE_TYPES:
+        s = 1000 / sp
+        return f'{int(s // 60)}:{int(s % 60):02d} /km'
+    if 'cycling' in t or 'biking' in t:
+        return f'{sp * 3.6:.1f} km/h'
+    return None
+
+
+def activity_rows(start, end, kind=None):
+    """The Training table: one row per Garmin activity, with the fields Garmin fills for that type."""
+    with db.connect() as con:
+        sql = 'SELECT * FROM activities WHERE day BETWEEN ? AND ?' + (' AND type = ?' if kind else '') + ' ORDER BY start_time DESC'
+        rows = con.execute(sql, (start.isoformat(), end.isoformat(), *([kind] if kind else []))).fetchall()
+    dup = {a['id']: a['duplicate'] for a in q.activities(start, end, include_duplicates=True)}
+    out = []
+    for r in rows:
+        a = json.loads(r['json'] or '{}')
+        t = r['type'] or 'other'
+        manual = bool(a.get('manualActivity') or a.get('isManualActivity'))
+        zones = [(a.get(f'hrTimeInZone_{z}') or 0) / 60 for z in range(1, 6)]
+        zt = sum(zones)
+        out.append({
+            'day': r['day'], 'time': (r['start_time'] or '')[11:16], 'name': r['name'] or type_label(t), 'type': t, 'type_label': type_label(t),
+            'duration_s': r['duration_s'], 'distance_km': (r['distance_m'] or 0) / 1000 or None, 'pace': _pace(a, t),
+            'kcal': r['kcal'], 'avg_hr': r['avg_hr'], 'max_hr': r['max_hr'], 'load': r['training_load'],
+            'aerobic': r['aerobic_te'], 'anaerobic': r['anaerobic_te'], 'effect': EFFECT_LABELS.get(a.get('trainingEffectLabel'), ''),
+            'ascent': a.get('elevationGain'), 'sweat_ml': a.get('waterEstimated'), 'steps': a.get('steps'),
+            'cadence': a.get('averageRunningCadenceInStepsPerMinute'), 'sets': a.get('totalSets'), 'reps': a.get('totalReps'),
+            'zones': [{'z': z + 1, 'min': round(m), 'pct': m / zt * 100} for z, m in enumerate(zones)] if zt else [],
+            'manual': manual, 'duplicate': dup.get(r['id'], False),
+            'source': 'MyFitnessPal' if (r['name'] or '').endswith('MyFitnessPal') else 'manual entry' if manual else '',
+        })
+        if out[-1]['source'] == 'MyFitnessPal':
+            out[-1]['name'] = out[-1]['name'].rsplit(' - MyFitnessPal', 1)[0]
+    return out
+
+
+def activity_mix(rows):
+    """Per activity type: count, hours, km, kcal and average HR, most time first."""
+    agg = defaultdict(lambda: {'n': 0, 'hours': 0.0, 'km': 0.0, 'kcal': 0.0, 'hr': []})
+    for r in rows:
+        if r['duplicate']:
+            continue
+        g = agg[r['type']]
+        g['n'] += 1
+        g['hours'] += (r['duration_s'] or 0) / 3600
+        g['km'] += r['distance_km'] or 0
+        g['kcal'] += r['kcal'] or 0
+        if r['avg_hr']:
+            g['hr'].append(r['avg_hr'])
+    return sorted(({'type': t, 'label': type_label(t), **g, 'avg_hr': sum(g['hr']) / len(g['hr']) if g['hr'] else None}
+                   for t, g in agg.items()), key=lambda x: -x['hours'])
 
 def hr_zones_weekly(start, end):
     """Minutes per HR zone per week, from Garmin's time-in-zone per activity."""

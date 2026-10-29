@@ -11,6 +11,7 @@
     <label>To <input type="date" name="to" value="{{ end }}"></label>
     {% if picked %}<input type="hidden" name="exercise" value="{{ picked }}">{% endif %}
     {% if toggle %}<input type="hidden" name="{{ toggle.key }}" value="{{ toggle.value }}">{% endif %}
+    {% if type_filter %}<input type="hidden" name="type" value="{{ type_filter }}">{% endif %}
     <button type="submit" class="chip">Apply</button>
   </div>
 </form>
@@ -211,19 +212,48 @@
 </section>
 {% endif %}
 
-{% if activities %}
+{% if activity_mix %}
 <section class="card table-card">
-  <h2>Activities</h2>
+  <h2>Activity mix</h2>
   <div class="table-wrap"><table>
-    <thead><tr><th>Date</th><th>Activity</th><th class="num">Time</th><th class="num">km</th><th class="num">Avg HR</th><th class="num">Load</th></tr></thead>
-    <tbody>{% for a in activities %}
-      <tr><td>{{ a.day | dmy }}</td><td>{{ a.name or a.type }}</td>
-        <td class="num">{% if a.duration_s %}{{ (a.duration_s // 3600) | int }}:{{ '%02d' % ((a.duration_s % 3600) // 60) }}{% endif %}</td>
-        <td class="num">{% if a.distance_m %}{{ '%.1f' % (a.distance_m / 1000) }}{% endif %}</td>
-        <td class="num">{{ a.avg_hr | int if a.avg_hr else '' }}</td>
-        <td class="num">{{ a.training_load | int if a.training_load else '' }}</td></tr>
+    <thead><tr><th>Type</th><th class="num">Sessions</th><th class="num">Hours</th><th class="num">km</th><th class="num">kcal</th><th class="num">kcal/h</th><th class="num">Avg HR</th></tr></thead>
+    <tbody>{% for m in activity_mix %}
+      <tr><td>{{ m.label }}</td><td class="num">{{ m.n }}</td><td class="num">{{ '%.1f' % m.hours }}</td>
+        <td class="num">{{ '{:,.0f}'.format(m.km) if m.km else '–' }}</td><td class="num">{{ '{:,.0f}'.format(m.kcal) }}</td>
+        <td class="num">{{ '{:,.0f}'.format(m.kcal / m.hours) if m.hours else '–' }}</td><td class="num">{{ m.avg_hr | round | int if m.avg_hr else '–' }}</td></tr>
     {% endfor %}</tbody>
   </table></div>
+</section>
+{% endif %}
+
+{% if activity_rows is defined %}
+<section class="card table-card">
+  <figcaption><h2>Activities</h2><span class="unit-tag">{{ activity_count }}{% if activity_count > activity_rows | length %}, newest {{ activity_rows | length }} shown{% endif %}</span></figcaption>
+  <div class="chip-row type-chips">{% for c in type_chips %}<a class="chip {{ 'on' if c.on else '' }}" href="{{ c.href }}">{{ c.label }}</a>{% endfor %}</div>
+  <div class="table-wrap"><table class="acts">
+    <thead><tr><th>Date</th><th>Activity</th><th class="num">Time</th><th class="num">Distance</th><th class="num">Pace</th><th class="num">kcal</th>
+      <th class="num">HR avg / max</th><th>HR zones</th><th>Effect</th><th class="num">Load</th><th class="num">Ascent</th><th class="num">Sweat</th><th class="num">More</th></tr></thead>
+    <tbody>{% for a in activity_rows %}
+      <tr class="{{ 'dup' if a.duplicate else '' }}">
+        <td><span class="when">{{ a.day | dmy }}</span><span class="sub">{{ a.time }}</span></td>
+        <td><span class="act-name">{{ a.name }}</span><span class="sub">{{ a.type_label }}{% if a.source %} · {{ a.source }}{% endif %}{% if a.duplicate %} · <b>duplicate, not counted</b>{% endif %}</span></td>
+        <td class="num">{% if a.duration_s %}{{ (a.duration_s // 3600) | int }}:{{ '%02d' % ((a.duration_s % 3600) // 60) }}{% endif %}</td>
+        <td class="num">{{ '%.2f km' % a.distance_km if a.distance_km else '' }}</td>
+        <td class="num">{{ a.pace or '' }}</td>
+        <td class="num strong">{{ a.kcal | round | int if a.kcal else '' }}</td>
+        <td class="num">{% if a.avg_hr %}{{ a.avg_hr | int }}{% if a.max_hr %} <span class="sub-inline">/ {{ a.max_hr | int }}</span>{% endif %}{% endif %}</td>
+        <td>{% if a.zones %}<span class="zbar" title="{% for z in a.zones %}Zone {{ z.z }}: {{ z.min }} min{{ ', ' if not loop.last }}{% endfor %}">{% for z in a.zones %}{% if z.pct > 0 %}<i class="z{{ z.z }}" style="width: {{ '%.1f' % z.pct }}%"></i>{% endif %}{% endfor %}</span>{% endif %}</td>
+        <td>{% if a.effect %}<span class="effect">{{ a.effect }}</span>{% endif %}{% if a.aerobic %}<span class="sub">{{ '%.1f' % a.aerobic }} aerobic{% if a.anaerobic %} · {{ '%.1f' % a.anaerobic }} anaer.{% endif %}</span>{% endif %}</td>
+        <td class="num">{{ a.load | round | int if a.load else '' }}</td>
+        <td class="num">{{ '%d m' % a.ascent if a.ascent else '' }}</td>
+        <td class="num">{{ '%.1f l' % (a.sweat_ml / 1000) if a.sweat_ml else '' }}</td>
+        <td class="num sub-inline">{% if a.sets %}{{ a.sets }} sets · {{ a.reps }} reps{% elif a.cadence %}{{ a.cadence | round | int }} spm{% elif a.steps %}{{ '{:,}'.format(a.steps) }} steps{% endif %}</td>
+      </tr>
+    {% endfor %}</tbody>
+  </table></div>
+  <div class="ramp"><span class="ramp-title">HR zones</span>{% for z in [1, 2, 3, 4, 5] %}<span class="sw"><i class="zsw z{{ z }}"></i>{{ z }}</span>{% endfor %}
+    <span class="tile-note">Effect: Garmin’s training effect (0–5) and its main benefit. Sweat: Garmin’s estimated fluid loss.
+      Entries typed into MyFitnessPal reach Garmin as manual activities; when one repeats a watch recording or a Jefit session that day, it’s shown faded and left out of the totals.</span></div>
 </section>
 {% endif %}
 

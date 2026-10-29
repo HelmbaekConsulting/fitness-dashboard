@@ -53,11 +53,30 @@ def first_day():
     return date.fromisoformat(row['d']) if row and row['d'] else date.today() - timedelta(days=90)
 
 
-def activities(start, end):
+def activities(start, end, include_duplicates=False):
     with db.connect() as con:
-        return [dict(r) for r in con.execute(
-            'SELECT id, day, start_time, type, name, duration_s, distance_m, avg_hr, kcal, training_load '
+        rows = [dict(r) for r in con.execute(
+            "SELECT id, day, start_time, type, name, duration_s, distance_m, avg_hr, kcal, training_load, "
+            "COALESCE(json_extract(json, '$.manualActivity'), json_extract(json, '$.isManualActivity'), 0) AS manual "
             'FROM activities WHERE day BETWEEN ? AND ? ORDER BY start_time DESC', (start.isoformat(), end.isoformat()))]
+        jefit_days = {r[0] for r in con.execute('SELECT DISTINCT day FROM workouts WHERE day BETWEEN ? AND ?',
+                                                (start.isoformat(), end.isoformat()))}
+    mark_duplicates(rows, jefit_days)
+    return [r for r in rows if not r['duplicate']] if not include_duplicates else rows
+
+
+def mark_duplicates(rows, jefit_days):
+    """Manual activities (MyFitnessPal syncs its exercise log to Garmin this way) that repeat something already
+    recorded: same day and within 15% of the duration of a watch recording, or a strength entry on a Jefit day."""
+    recorded = defaultdict(list)
+    for r in rows:
+        if not r['manual']:
+            recorded[r['day']].append(r['duration_s'] or 0)
+    for r in rows:
+        d = r['duration_s'] or 0
+        same = any(abs(d - x) <= 0.15 * max(d, x) for x in recorded[r['day']])
+        strength = 'strength' in f'{r["name"]} {r["type"]}'.lower() and r['day'] in jefit_days
+        r['duplicate'] = bool(r['manual']) and (same or strength)
 
 
 def training_load(start, end):

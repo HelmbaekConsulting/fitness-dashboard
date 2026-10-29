@@ -163,6 +163,20 @@ td.st-critical span { color: var(--muted); }
 .canvas-wrap.short { height: 150px; }
 .sessions td.details { min-width: 260px; }
 .est { font-size: 11px; color: var(--muted); }
+.type-chips { margin: 10px 0 2px; }
+a.chip { text-decoration: none; display: inline-block; }
+.acts td { vertical-align: top; }
+.acts tr.dup td { opacity: .5; }
+.acts tr.dup b { font-weight: 600; }
+.acts .sub { display: block; font-size: 12px; color: var(--muted); }
+.acts .sub-inline { font-size: 12px; color: var(--muted); }
+.acts .act-name { font-weight: 500; }
+.acts .strong { font-weight: 600; }
+.effect { font-size: 12px; border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; }
+.zbar { display: flex; width: 96px; height: 8px; border-radius: 4px; overflow: hidden; background: var(--fig-base); gap: 1px; margin-top: 5px; }
+.zbar i, .zsw { display: block; height: 100%; }
+.zsw { width: 14px; height: 10px; border-radius: 3px; }
+.z1 { background: var(--l2); } .z2 { background: var(--l3); } .z3 { background: var(--l4); } .z4 { background: var(--l5); } .z5 { background: var(--l6); }
 
 @media (max-width: 760px) {
   .brand { display: none; }

@@ -327,9 +327,20 @@ def training(request: Request):
     z2 = sum(v for _, v in zones[2]) / weeks if zones[2] else None
     cal_start = max(start, end - timedelta(days=364))
     cal, active = insights.calendar(cal_start, end)
+    rows = insights.activity_rows(start, end)
+    mix = insights.activity_mix(rows)
+    kind = request.query_params.get('type') or ''
+    if kind not in {m['type'] for m in mix}:
+        kind = ''
+    shown = [r for r in rows if r['type'] == kind] if kind else rows
+    type_chips = [{'label': 'All', 'href': '?' + urlencode({k: v for k, v in request.query_params.items() if k != 'type'}), 'on': not kind}]
+    for m in mix:
+        type_chips.append({'label': f'{m["label"]} {m["n"]}', 'href': '?' + urlencode({**dict(request.query_params), 'type': m['type']}),
+                           'on': m['type'] == kind})
     tiles = [
         tile('Activities', len(acts), '', '{:.0f}', note='in the range'),
         tile('Hours per week', sum((a['duration_s'] or 0) for a in acts) / 3600 / weeks, 'h', note='average'),
+        tile('Activity calories', sum((a['kcal'] or 0) for a in acts) / weeks, 'kcal', '{:,.0f}', note='per week, average'),
         tile('Zone 2', z2, 'min', '{:.0f}', note='per week, average'),
         tile('Distance', sum((a['distance_m'] or 0) for a in acts) / 1000, 'km', '{:,.0f}', note='in the range'),
         tile('Fitness', load[-1][1] if load else None, '', '{:.0f}', note='42-day load, today'),
@@ -352,7 +363,9 @@ def training(request: Request):
     ]
     return render(request, 'training', {'_range': (rng, start, end), 'title': 'Training', 'tiles': tiles, 'charts': charts,
                                         'calendar': cal, 'calendar_active': active, 'calendar_from': cal_start.isoformat(),
-                                        'activities': acts[:50], 'source': 'Garmin Connect; Jefit sessions without a watch recording'})
+                                        'activity_rows': shown[:150], 'activity_count': len(shown), 'activity_mix': mix,
+                                        'type_chips': type_chips, 'type_filter': kind,
+                                        'source': 'Garmin Connect; Jefit sessions without a watch recording'})
 
 
 @app.get('/recovery', response_class=HTMLResponse)
