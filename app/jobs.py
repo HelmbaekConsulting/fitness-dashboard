@@ -1,4 +1,4 @@
-# Background jobs: daily Garmin and Withings sync at SYNC_TIME, the import folder every 15 minutes.
+# Background jobs: Garmin and Withings sync at each SYNC_TIME, the import folder every 15 minutes.
 import logging
 import threading
 
@@ -41,9 +41,11 @@ def scan_imports():
 
 
 def start_scheduler():
-    hour, minute = (int(x) for x in SYNC_TIME.split(':'))
     s = BackgroundScheduler()
-    s.add_job(sync_all, 'cron', hour=hour, minute=minute, id='daily', misfire_grace_time=3600, coalesce=True)
+    # SYNC_TIME can hold several times, e.g. "09:00,21:00".
+    for i, t in enumerate(x.strip() for x in SYNC_TIME.split(',') if x.strip()):
+        hour, minute = (int(x) for x in t.split(':'))
+        s.add_job(sync_all, 'cron', hour=hour, minute=minute, id=f'daily{i}', misfire_grace_time=3600, coalesce=True)
     s.add_job(scan_imports, 'interval', minutes=15, id='imports')
     s.start()
     return s

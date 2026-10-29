@@ -45,7 +45,7 @@
 
   <div class="card">
     <h2>Sync</h2>
-    <p>Runs by itself every day at {{ sync_time }}. History is fetched backwards, about 120 days per run.</p>
+    <p>Runs by itself every day at {{ sync_time.replace(',', ', ') }}. History is fetched backwards, about 120 days per run.</p>
     <form method="post" action="/sync"><button class="button" {{ 'disabled' if running else '' }}>{{ 'Sync running…' if running else 'Sync now' }}</button></form>
     <ul class="plain">
       <li>Garmin days: {{ counts.get('garmin', 0) }}</li>

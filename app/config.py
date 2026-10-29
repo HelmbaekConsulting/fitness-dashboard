@@ -17,8 +17,8 @@ WITHINGS_REDIRECT_URI = os.environ.get('WITHINGS_REDIRECT_URI', 'http://localhos
 
 # First day the history backfill reaches back to.
 HISTORY_START = os.environ.get('HISTORY_START', '2019-01-01')
-# Daily sync time, in the container's TZ.
-SYNC_TIME = os.environ.get('SYNC_TIME', '05:30')
+# Sync times, in the container's TZ; several allowed ("09:00,21:00").
+SYNC_TIME = os.environ.get('SYNC_TIME', '09:00')
 # Optional password for the web pages (HTTP basic auth, user "me").
 DASHBOARD_PASSWORD = os.environ.get('DASHBOARD_PASSWORD', '')
 
