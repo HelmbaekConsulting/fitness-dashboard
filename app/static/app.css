@@ -87,6 +87,11 @@ pre { background: var(--page); border: 1px solid var(--border); border-radius: 8
 .button { display: inline-block; background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 8px 14px; font: inherit; text-decoration: none; cursor: pointer; }
 .button.ghost { background: transparent; color: var(--accent); border: 1px solid var(--border); }
 .button[disabled] { opacity: .6; cursor: default; }
+.upload { display: flex; flex-direction: column; gap: 8px; margin: 8px 0; }
+.drop { position: relative; display: block; border: 1.5px dashed var(--axis); border-radius: 10px; padding: 18px 12px; text-align: center; color: var(--ink-2); font-size: 14px; cursor: pointer; overflow-wrap: anywhere; }
+.drop:hover, .drop:focus-within { border-color: var(--accent); color: var(--ink); }
+.drop input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.upload .button { align-self: flex-start; }
 ul.plain { padding-left: 18px; margin: 8px 0; font-size: 14px; color: var(--ink-2); }
 
 @media (max-width: 760px) {

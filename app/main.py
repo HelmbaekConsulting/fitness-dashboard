@@ -6,12 +6,13 @@ from datetime import date, timedelta
 from pathlib import Path
 from urllib.parse import urlencode
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, File, Request, UploadFile
+from starlette.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from . import db, garmin, jobs, withings
+from . import db, garmin, imports, jobs, withings
 from . import queries as q
 from .config import DASHBOARD_PASSWORD, IMPORT_DIR, SYNC_TIME
 
@@ -299,6 +300,21 @@ def setup(request: Request):
 def sync_now():
     jobs.start_in_background()
     return RedirectResponse('/setup?msg=Sync+started', 303)
+
+
+@app.post('/upload')
+async def upload(files: list[UploadFile] = File(...)):
+    errors = []
+    for f in files:
+        data = await f.read(imports.MAX_UPLOAD + 1)
+        try:
+            if len(data) > imports.MAX_UPLOAD:
+                raise ValueError(f'{f.filename}: larger than 50 MB')
+            imports.save_upload(f.filename, data)
+        except ValueError as e:
+            errors.append(str(e))
+    msgs = errors + (await run_in_threadpool(imports.scan) or [])
+    return RedirectResponse('/setup?' + urlencode({'msg': '; '.join(msgs)[:600] or 'Nothing to import.'}), 303)
 
 
 @app.get('/withings/connect')

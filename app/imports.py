@@ -1,17 +1,22 @@
 # Watch folder for the apps without an API: food exports (MyFitnessPal, Cronometer) and strength logs (Jefit, Hevy,
-# Strong). Drop a CSV into IMPORT_DIR; it's recognised by its column names, imported, and moved to done/ or failed/.
+# Strong). Drop a CSV into IMPORT_DIR or upload it on the Setup page; it's recognised by its column names, imported,
+# and moved to done/ or failed/.
 import csv
 import hashlib
 import io
 import re
 import shutil
+import threading
 from collections import defaultdict
 from datetime import datetime
+from pathlib import Path
 
 from . import db
 from .config import IMPORT_DIR
 
 LB = 0.45359237
+MAX_UPLOAD = 50 * 1024 * 1024
+_scan_lock = threading.Lock()
 
 
 def _norm(h):
@@ -157,12 +162,18 @@ def import_file(path):
 
 
 def scan():
+    # The 15-minute job and an upload can run at once; only one may move files.
+    with _scan_lock:
+        return _scan()
+
+
+def _scan():
     done, failed = IMPORT_DIR / 'done', IMPORT_DIR / 'failed'
     done.mkdir(exist_ok=True)
     failed.mkdir(exist_ok=True)
     files = sorted(p for p in IMPORT_DIR.iterdir() if p.is_file() and p.suffix.lower() == '.csv')
     if not files:
-        return
+        return []
     log = db.log_start('import')
     msgs, ok = [], True
     for p in files:
@@ -177,3 +188,12 @@ def scan():
             shutil.move(str(p), failed / f'{stamp}-{p.name}')
             (failed / f'{stamp}-{p.name}.error.txt').write_text(str(e), encoding='utf-8')
     db.log_end(log, 'ok' if ok else 'error', '; '.join(msgs))
+    return msgs
+
+
+def save_upload(name, data):
+    """Stores an uploaded file in the import folder under a safe name; scan() then imports it."""
+    safe = re.sub(r'[^A-Za-z0-9._ -]+', '_', Path(name or 'upload.csv').name).strip() or 'upload.csv'
+    if not safe.lower().endswith('.csv'):
+        raise ValueError(f'{safe}: only CSV files can be imported')
+    (IMPORT_DIR / safe).write_bytes(data)

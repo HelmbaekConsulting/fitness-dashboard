@@ -35,8 +35,14 @@
 
   <div class="card">
     <h2>Food and Jefit exports</h2>
-    <p>Drop CSV files into the import folder. They’re picked up every 15 minutes and moved to <code>done</code> or <code>failed</code>.</p>
-    <pre>{{ import_dir }}</pre>
+    <form class="upload" method="post" action="/upload" enctype="multipart/form-data">
+      <label class="drop">
+        <input type="file" name="files" accept=".csv,text/csv" multiple required onchange="this.form.querySelector('.drop-text').textContent = [...this.files].map(f => f.name).join(', ')">
+        <span class="drop-text">Choose CSV files, or drop them here</span>
+      </label>
+      <button class="button">Import</button>
+    </form>
+    <p class="tile-note">MyFitnessPal, Cronometer, Jefit, Hevy or Strong exports. Imported straight away; files dropped in the <code>fitness-import</code> share are picked up every 15 minutes.</p>
     {{ status(last.get('import')) }}
     {% if imports %}
     <ul class="plain">{% for i in imports %}<li>{{ i.file }}: {{ i.kind }}, {{ i.rows }} rows</li>{% endfor %}</ul>
