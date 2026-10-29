@@ -158,24 +158,46 @@ def import_jefit_backup(text, fname):
     # Jefit's account export ("Export data") stacks a dozen CSV sections in one file. EXERCISE LOGS has every
     # session since the first, sets written as "41x8,41x7", in the unit chosen in Jefit's settings ("mass").
     unit = (_section(text, 'SETTING') or [{}])[0].get('mass', '').strip().lower()
+    factor = LB if unit.startswith('lb') else 1.0
     rows = _section(text, 'EXERCISE LOGS')
     if not rows:
         raise ValueError('Jefit backup without an EXERCISE LOGS section')
-    return import_strength(rows, list(rows[0].keys()), fname, LB if unit.startswith('lb') else 1.0)
+    n = import_strength(rows, list(rows[0].keys()), fname, factor)
+    return n, import_jefit_profile(_section(text, 'PROFILE'), factor)
+
+
+def import_jefit_profile(rows, factor):
+    # Weight and body fat typed into Jefit's profile. A Withings reading of the same day always wins.
+    n = 0
+    with db.tx() as con:
+        for r in rows:
+            day = (r.get('mydate') or '')[:10]
+            if not re.match(r'^\d{4}-\d{2}-\d{2}$', day):
+                continue
+            for metric, value in (('weight_kg', (_num(r.get('weight')) or 0) * factor), ('fat_pct', _num(r.get('fatpercent')) or 0)):
+                if value <= 0:
+                    continue
+                if con.execute("SELECT 1 FROM metrics WHERE day=? AND metric=? AND source='withings'", (day, metric)).fetchone():
+                    continue
+                db.put_metric(con, day, metric, value, 'jefit')
+                n += 1
+    return n
 
 
 def import_file(path):
     raw = path.read_bytes()
     sha = hashlib.sha256(raw).hexdigest()
-    with db.connect() as con:
-        if con.execute('SELECT 1 FROM imports WHERE sha=?', (sha,)).fetchone():
-            return 'duplicate', 0
     text = raw.decode('utf-8-sig', errors='replace')
-    if '### EXERCISE LOGS' in text:
-        n = import_jefit_backup(text, path.name)
+    jefit = '### EXERCISE LOGS' in text
+    # Jefit backups may come again (the importer reads more of them over time); re-importing replaces, never doubles.
+    with db.connect() as con:
+        if not jefit and con.execute('SELECT 1 FROM imports WHERE sha=?', (sha,)).fetchone():
+            return 'duplicate', 0
+    if jefit:
+        n, body = import_jefit_backup(text, path.name)
         with db.tx() as con:
             con.execute('INSERT OR REPLACE INTO imports VALUES (?,?,?,?,?)', (sha, path.name, 'strength', n, db.now()))
-        return 'strength (Jefit backup)', n
+        return f'Jefit backup, {body} weight and body fat entries, strength', n
     sample = text[:4096]
     dialect = csv.Sniffer().sniff(sample, delimiters=',;\t') if sample else csv.excel
     reader = csv.DictReader(io.StringIO(text), dialect=dialect)

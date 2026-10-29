@@ -171,7 +171,7 @@ def body(request: Request):
               'Arterial stiffness from the Body Scan; lower is better.'),
     ]
     return render(request, 'body', {'_range': (rng, start, end), 'title': 'Body', 'tiles': tiles, 'charts': charts,
-                                    'source': 'Withings Body Scan'})
+                                    'source': 'Withings Body Scan; older weight and body fat typed into Jefit’s profile'})
 
 
 @app.get('/training', response_class=HTMLResponse)
