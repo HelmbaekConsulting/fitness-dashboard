@@ -86,7 +86,8 @@ h2 { font-size: 15px; margin: 0; font-weight: 600; }
 .sync-card.st-running .dot { background: var(--accent); }
 .sync-card.st-error .dot { background: var(--st-serious); }
 .content { flex: 1; min-width: 0; padding: 36px clamp(16px, 4vw, 44px) 64px; display: flex; flex-direction: column; gap: 20px; }
-.content > * { width: 100%; max-width: 1160px; margin-left: auto; margin-right: auto; }
+/* main. so the centring beats the margin: 0 on .card and .flash further down. */
+main.content > * { width: 100%; max-width: 1160px; margin-left: auto; margin-right: auto; }
 
 .tabbar { display: none; position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; grid-template-columns: repeat(5, minmax(0, 1fr));
   padding: 6px 6px calc(6px + env(safe-area-inset-bottom)); background: var(--bar); border-top: 1px solid var(--line);
