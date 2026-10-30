@@ -84,8 +84,9 @@ itself has no login, so set up Access first.
    hostname to `http://fitness-dashboard:8080`; Cloudflare creates the DNS record.
 3. Copy the tunnel token (the long text after `--token` in the Docker command) into `.env` as
    `CLOUDFLARE_TUNNEL_TOKEN`, then Compose Up. The tunnel shows Healthy in Cloudflare once it's connected.
-4. **Withings:** add `https://fitness.example.com/withings/callback` to the callback URLs of your Withings app, set it
-   as `WITHINGS_REDIRECT_URI` and connect Withings once more from that address.
+4. **Withings** (only to press Connect Withings from outside; an existing connection keeps working): add
+   `https://fitness.example.com/withings/callback` to the callback URLs of your Withings app and set it as
+   `WITHINGS_REDIRECT_URI`.
 
 ## Run locally
 
