@@ -71,6 +71,22 @@ Without Compose: Docker tab → Add Container, repository `ghcr.io/<you>/fitness
 The importer recognises files by their column names. If a Jefit file lands in `failed/`, the error lists its columns
 so the importer can be taught that format.
 
+### 6. Open it from outside (optional)
+
+The `tunnel` service in `docker-compose.yml` runs a Cloudflare Tunnel: it connects out to Cloudflare, so no router
+ports are opened. Cloudflare Access sits in front and only lets in the e-mail addresses you list. The dashboard
+itself has no login, so set up Access first.
+
+1. **Access** (Cloudflare Zero Trust, free plan): Access controls → Applications → Self-hosted, hostname for example
+   `fitness.example.com`, with an Allow policy for your e-mail addresses. Integrations → Identity providers: add
+   One-time PIN, so a code by e-mail is enough to log in.
+2. **Tunnel:** Networking → Tunnels → Create tunnel (cloudflared). Add a published application route from the same
+   hostname to `http://fitness-dashboard:8080`; Cloudflare creates the DNS record.
+3. Copy the tunnel token (the long text after `--token` in the Docker command) into `.env` as
+   `CLOUDFLARE_TUNNEL_TOKEN`, then Compose Up. The tunnel shows Healthy in Cloudflare once it's connected.
+4. **Withings:** add `https://fitness.example.com/withings/callback` to the callback URLs of your Withings app, set it
+   as `WITHINGS_REDIRECT_URI` and connect Withings once more from that address.
+
 ## Run locally
 
 ```bash

@@ -12,3 +12,15 @@ services:
     volumes:
       - /mnt/user/appdata/fitness-dashboard:/data
       - /mnt/user/fitness-import:/import
+
+  # Optional: the dashboard on your own address outside the home network, through a Cloudflare Tunnel behind
+  # Cloudflare Access (README, "Open it from outside"). Remove this service to stay on the home network only.
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: fitness-tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - fitness

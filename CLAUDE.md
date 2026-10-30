@@ -18,6 +18,8 @@ Personal health and fitness dashboard: FastAPI + Jinja + Chart.js, SQLite, one D
 - Garmin uses the official Personal API (`personal.connectapi.garmin.com`, key → 24-hour bearer token). It has no
   published rate limit: keep `PAUSE` between calls and never loop live calls while testing. Never print the key or token.
 - Never commit `.env` or `data/`. Test against a throwaway `DATA_DIR`, not the real database.
+- Outside the home network: Cloudflare Tunnel (`tunnel` service in `docker-compose.yml`) behind Cloudflare Access
+  (README, step 6). The app has no login of its own yet; Access is the only gate, so never route a hostname without it.
 - Charts: one y-axis per chart, series colours in the fixed `--s1`…`--s8` order from `static/app.css`, dates shown
   dd/mm/yyyy.
 - Run locally: `.venv\Scripts\python -m uvicorn app.main:app --port 8080`. Check pages at desktop and 375 px width.
