@@ -1,20 +1,24 @@
 # Web app: one page per area, every page filtered by the date range in the query string (?range=90d or ?from=&to=).
+# Every request reads one person's database: yours at home, whoever Cloudflare Access logged in from outside (gate).
 import base64
+import html
 import secrets
 from contextlib import asynccontextmanager
 from datetime import date, timedelta
 from pathlib import Path
 from urllib.parse import urlencode
 
-from fastapi import FastAPI, File, Form, Request, UploadFile
+import requests
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from starlette.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from . import db, figure, garmin, icons, imports, insights, jobs, muscles, today, withings
+from . import db, figure, garmin, icons, imports, insights, jobs, muscles, today, users, withings
 from . import queries as q
-from .config import DASHBOARD_PASSWORD, IMPORT_DIR, SYNC_TIME
+from .config import (CF_ACCESS_AUD, CF_ACCESS_TEAM, DASHBOARD_PASSWORD, IMPORT_DIR, OWNER_EMAIL, PUBLIC_URL, SYNC_TIME,
+                     WITHINGS_REDIRECT_URI)
 
 BASE = Path(__file__).parent
 templates = Jinja2Templates(directory=BASE / 'templates')
@@ -29,12 +33,20 @@ PAGES = [('today', 'Today', '/', 'sun'), ('body', 'Body', '/body', 'scale'), ('t
          ('progress', 'Training vs body', '/progress', 'trend'), ('nutrition', 'Nutrition', '/nutrition', 'utensils'),
          ('strength', 'Strength', '/strength', 'dumbbell'), ('setup', 'Setup', '/setup', 'gear')]
 SIDEBAR_ORDER = ['today', 'body', 'muscles', 'progress', 'training', 'recovery', 'nutrition', 'strength']
+# The owner's admin page, after Setup in the menus.
+ADMIN = ('admin', 'People', '/admin', 'users')
+REFUSED = ('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, '
+           'initial-scale=1"><title>Fitness</title><link rel="stylesheet" href="/static/app.css"></head><body>'
+           '<main class="content"><p class="flash">{}</p></main></body></html>')
 
 
 @asynccontextmanager
 async def lifespan(app):
-    db.init()
-    withings.reextract()
+    users.init()
+    for user in users.everyone():
+        with db.using(user.db_path):
+            db.init()
+            withings.reextract()
     sched = jobs.start_scheduler()
     yield
     sched.shutdown(wait=False)
@@ -44,20 +56,35 @@ app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None)
 app.mount('/static', StaticFiles(directory=BASE / 'static'), name='static')
 
 
+def password_ok(request):
+    auth = request.headers.get('authorization', '')
+    if not auth.startswith('Basic '):
+        return False
+    try:
+        _, _, pw = base64.b64decode(auth[6:]).decode().partition(':')
+        return secrets.compare_digest(pw, DASHBOARD_PASSWORD)
+    except Exception:
+        return False
+
+
 @app.middleware('http')
-async def basic_auth(request: Request, call_next):
-    if DASHBOARD_PASSWORD and request.url.path != '/withings/callback':
-        auth = request.headers.get('authorization', '')
-        ok = False
-        if auth.startswith('Basic '):
-            try:
-                _, _, pw = base64.b64decode(auth[6:]).decode().partition(':')
-                ok = secrets.compare_digest(pw, DASHBOARD_PASSWORD)
-            except Exception:
-                ok = False
-        if not ok:
+async def gate(request: Request, call_next):
+    """Through Cloudflare: whoever Access logged in, checked by its signed token. At home: the owner, behind
+    DASHBOARD_PASSWORD if set. The rest of the request then reads and writes that person's database."""
+    if request.url.path.startswith('/static/'):
+        return await call_next(request)
+    outside = users.via_cloudflare(request.headers)
+    if outside:
+        user, why = await run_in_threadpool(users.from_access, request.headers, request.cookies)
+        if not user:
+            return HTMLResponse(REFUSED.format(html.escape(why)), 403)
+    else:
+        if DASHBOARD_PASSWORD and request.url.path != '/withings/callback' and not password_ok(request):
             return Response('Login required', 401, {'WWW-Authenticate': 'Basic realm="Fitness"'})
-    return await call_next(request)
+        user = users.OWNER
+    request.state.user, request.state.outside = user, outside
+    with db.using(user.db_path):
+        return await call_next(request)
 
 
 def parse_range(request):
@@ -152,7 +179,9 @@ def render(request, page, ctx, template='page.html'):
     return templates.TemplateResponse(request, template, {
         'page': page, 'pages': PAGES, 'sidebar': sorted((p for p in PAGES if p[0] in order), key=lambda p: order[p[0]]),
         'ranges': RANGES, 'range': rng, 'start': start.isoformat(), 'end': end.isoformat(),
-        'query': urlencode([(k, v) for k, v in request.query_params.multi_items() if k != 'msg']), 'sync': sync_badge(), **ctx})
+        'user': request.state.user, 'admin': ADMIN if request.state.user.is_owner else None,
+        'query': urlencode([(k, v) for k, v in request.query_params.multi_items() if k not in ('msg', 'invited')]),
+        'sync': sync_badge(), **ctx})
 
 
 # ---- Figures ---------------------------------------------------------------------------------------------------
@@ -464,48 +493,142 @@ def strength(request: Request):
                                         'source': 'Jefit export; calories and heart rate from Garmin where the watch recorded the session'})
 
 
+def back(msg, path='/setup'):
+    return RedirectResponse(path + '?' + urlencode({'msg': msg}), 303)
+
+
 @app.get('/setup', response_class=HTMLResponse)
 def setup(request: Request):
+    user = request.state.user
     last, recent, counts, imports = q.sync_status()
     return render(request, 'setup', {
         '_range': parse_range(request), 'title': 'Setup', 'last': last, 'recent': recent, 'counts': counts, 'imports': imports,
-        'garmin_ready': garmin.has_key(), 'withings_configured': withings.configured(), 'withings_connected': withings.connected(),
-        'running': jobs.is_running(), 'import_dir': str(IMPORT_DIR), 'sync_time': SYNC_TIME,
+        'garmin_ready': garmin.has_key(), 'garmin_saved': bool(db.kv_get('garmin_api_key')),
+        'withings_configured': withings.configured(), 'withings_connected': withings.connected(),
+        'running': jobs.is_running(user), 'import_dir': str(IMPORT_DIR), 'sync_time': SYNC_TIME,
         'withings_fields': q.withings_fields(), 'msg': request.query_params.get('msg', '')}, 'setup.html')
 
 
 @app.post('/sync')
-def sync_now(next: str = Form('/setup')):
-    jobs.start_in_background()
+def sync_now(request: Request, next: str = Form('/setup')):
+    jobs.start_in_background(request.state.user)
     target = next if next.startswith('/') and not next.startswith('//') else '/setup'
     return RedirectResponse(target + ('&' if '?' in target else '?') + 'msg=Sync+started', 303)
 
 
+@app.post('/garmin/key')
+def garmin_key(request: Request, key: str = Form('')):
+    key = key.strip()
+    if not key:
+        return back('Paste the key from Garmin Connect first.')
+    try:
+        accepted = garmin.check_key(key)
+    except requests.RequestException:
+        return back('Garmin couldn’t be reached. Try again in a minute.')
+    if not accepted:
+        return back('Garmin didn’t accept that key. Check that it was copied whole and hasn’t expired.')
+    db.kv_set('garmin_api_key', key)
+    jobs.start_in_background(request.state.user)
+    return back('Garmin key saved. The first sync has started; older history comes in over the next nights.')
+
+
+@app.post('/garmin/key/remove')
+def garmin_key_remove():
+    db.kv_del('garmin_api_key')
+    return back('Garmin key removed.' + (' The one in .env is used again.' if garmin.has_key() else ''))
+
+
 @app.post('/upload')
-async def upload(files: list[UploadFile] = File(...)):
+async def upload(request: Request, files: list[UploadFile] = File(...)):
+    folder = request.state.user.import_dir
     errors = []
     for f in files:
         data = await f.read(imports.MAX_UPLOAD + 1)
         try:
             if len(data) > imports.MAX_UPLOAD:
                 raise ValueError(f'{f.filename}: larger than 50 MB')
-            imports.save_upload(f.filename, data)
+            imports.save_upload(folder, f.filename, data)
         except ValueError as e:
             errors.append(str(e))
-    msgs = errors + (await run_in_threadpool(imports.scan) or [])
-    return RedirectResponse('/setup?' + urlencode({'msg': '; '.join(msgs)[:600] or 'Nothing to import.'}), 303)
+    msgs = errors + (await run_in_threadpool(imports.scan, folder) or [])
+    return back('; '.join(msgs)[:600] or 'Nothing to import.')
+
+
+def withings_callback_url(request):
+    """Withings sends people back to where they started: the outside address when they came through Cloudflare."""
+    if request.state.outside:
+        return (PUBLIC_URL or f'https://{request.url.hostname}') + '/withings/callback'
+    return WITHINGS_REDIRECT_URI
 
 
 @app.get('/withings/connect')
-def withings_connect():
-    return RedirectResponse(withings.auth_url(), 302)
+def withings_connect(request: Request):
+    return RedirectResponse(withings.auth_url(withings_callback_url(request)), 302)
 
 
 @app.get('/withings/callback')
-def withings_callback(code: str = '', state: str = ''):
+def withings_callback(request: Request, code: str = '', state: str = ''):
     try:
         withings.exchange_code(code, state)
     except Exception as e:
-        return RedirectResponse('/setup?' + urlencode({'msg': f'Withings failed: {str(e)[:150]}'}), 303)
-    jobs.start_in_background()
-    return RedirectResponse('/setup?' + urlencode({'msg': 'Withings connected. First sync started.'}), 303)
+        return back(f'Withings failed: {str(e)[:150]}')
+    jobs.start_in_background(request.state.user)
+    return back('Withings connected. First sync started.')
+
+
+# ---- Admin: the friends you share the dashboard with -------------------------------------------------------------
+
+def owner_only(request):
+    if not request.state.user.is_owner:
+        raise HTTPException(404)
+
+
+def settings_checks():
+    """What the outside login needs in .env, for the admin page."""
+    return [
+        (bool(CF_ACCESS_TEAM), f'Cloudflare team: {CF_ACCESS_TEAM}' if CF_ACCESS_TEAM else
+         'CF_ACCESS_TEAM is missing, so nobody gets in from outside, you included.'),
+        (bool(CF_ACCESS_AUD), 'Cloudflare application tag (CF_ACCESS_AUD) set.' if CF_ACCESS_AUD else
+         'CF_ACCESS_AUD is missing: logins to any application in your Cloudflare team are accepted.'),
+        (bool(OWNER_EMAIL), f'Your login: {OWNER_EMAIL}' if OWNER_EMAIL else
+         'OWNER_EMAIL is missing, so from outside you’d be turned away like a stranger.'),
+        (bool(PUBLIC_URL), f'Outside address: {PUBLIC_URL}' if PUBLIC_URL else
+         'PUBLIC_URL is missing, so the invite message has no address in it.'),
+    ]
+
+
+@app.get('/admin', response_class=HTMLResponse)
+def admin(request: Request):
+    owner_only(request)
+    people = []
+    for u in users.friends():
+        with db.using(u.db_path):
+            people.append({'user': u, 'garmin': garmin.has_key(), 'withings': withings.connected(), 'sync': q.last_sync()})
+    invited = users.get(request.query_params.get('invited', ''))
+    return render(request, 'admin', {
+        '_range': parse_range(request), 'title': 'People', 'people': people, 'invited': invited if invited and not invited.is_owner else None,
+        'public_url': PUBLIC_URL or ('https://' + (request.url.hostname or '') if request.state.outside else ''),
+        'checks': settings_checks(), 'callback': (PUBLIC_URL or 'https://<outside address>') + '/withings/callback',
+        'msg': request.query_params.get('msg', '')}, 'admin.html')
+
+
+@app.post('/admin/invite')
+def admin_invite(request: Request, email: str = Form(''), name: str = Form('')):
+    owner_only(request)
+    try:
+        user = users.invite(email, name)
+    except ValueError as e:
+        return back(str(e), '/admin')
+    return RedirectResponse('/admin?' + urlencode({'invited': user.id}), 303)
+
+
+@app.post('/admin/remove')
+def admin_remove(request: Request, id: str = Form('')):
+    owner_only(request)
+    try:
+        user = users.remove(id)
+    except OSError as e:
+        return back(f'Their folder couldn’t be deleted, so they’re still on the list: {e}', '/admin')
+    if not user:
+        return back('That person isn’t on the list any more.', '/admin')
+    return back(f'{user.name} removed, with all their data. Take {user.email} off the Cloudflare policy too.', '/admin')

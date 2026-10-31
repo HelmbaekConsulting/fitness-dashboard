@@ -1,0 +1,74 @@
+{% extends 'base.html' %}
+{% block main %}
+<header class="page-head"><div><p class="eyebrow">Admin · invites and outside access</p><h1>People</h1></div></header>
+{% if msg %}<p class="flash">{{ msg }}</p>{% endif %}
+
+{% if invited %}
+<section class="card">
+  <h2>Next steps for {{ invited.name }}</h2>
+  <ol class="steps">
+    <li><strong>Let them in at Cloudflare:</strong> <a href="https://one.dash.cloudflare.com/" target="_blank" rel="noopener">Zero Trust</a> → Access controls → Applications → your fitness application → Policies: add <code>{{ invited.email }}</code> to the Allow policy.</li>
+    <li><strong>Send them this message:</strong>
+      <textarea class="invite-text" id="invite-text" rows="11" readonly>Hi {{ invited.name }},
+
+I’ve set up a fitness dashboard for you: {{ public_url or '[address]' }}
+
+Sign in with {{ invited.email }}. Cloudflare e-mails you a code, so there’s no password. Then open Setup:
+- Garmin: in Garmin Connect, create a personal API key (account settings → Personal API) and paste it there.
+- Withings: press Connect Withings.
+
+The dashboard is yours alone: on my admin page I only see whether your sync works.</textarea>
+      <button class="button small" type="button" onclick="copyInvite(this)">Copy message</button>
+    </li>
+  </ol>
+</section>
+{% endif %}
+
+<section class="setup-grid">
+  <div class="card">
+    <h2>Invite a friend</h2>
+    <p>They get a dashboard of their own, with their own Garmin and Withings. Nothing of yours is shared.</p>
+    <form class="invite-form" method="post" action="/admin/invite">
+      <input name="name" placeholder="Name" aria-label="Name" maxlength="60" autocomplete="off">
+      <input name="email" type="email" placeholder="E-mail they sign in with" aria-label="E-mail" required autocomplete="off">
+      <button class="button small">Invite</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Outside login</h2>
+    <ul class="checks">{% for ok, text in checks %}<li class="{{ 'ok' if ok else 'warn' }}">● <span>{{ text }}</span></li>{% endfor %}</ul>
+    <p class="tile-note">Settings in <code>.env</code> on the server (README, step 6). For Withings, <code>{{ callback }}</code> must be one of the callback URLs in your Withings developer app.</p>
+  </div>
+</section>
+
+<section class="card table-card">
+  <h2>Friends</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Name</th><th>E-mail</th><th>Invited</th><th>Last seen</th><th>Garmin</th><th>Withings</th><th>Last sync</th><th></th></tr></thead>
+    <tbody>{% for p in people %}
+      <tr>
+        <td>{{ p.user.name }}</td><td>{{ p.user.email }}</td><td>{{ p.user.invited[:10] | dmy }}</td>
+        <td>{{ (p.user.last_seen[:10] | dmy) if p.user.last_seen else 'Not yet' }}</td>
+        <td class="{{ 'ok' if p.garmin else 'warn' }}">{{ 'Key set' if p.garmin else 'No key' }}</td>
+        <td class="{{ 'ok' if p.withings else 'warn' }}">{{ 'Connected' if p.withings else 'Not connected' }}</td>
+        <td class="{{ 'ok' if p.sync and p.sync.state == 'ok' else 'warn' if p.sync else '' }}">{% if p.sync %}{{ {'ok': 'OK', 'running': 'Running', 'error': 'Problem'}[p.sync.state] }}, {{ p.sync.started[:10] | dmy }}{% else %}Never{% endif %}</td>
+        <td><form method="post" action="/admin/remove" onsubmit='return confirm({{ ("Remove " ~ p.user.name ~ " and delete all their data? This can’t be undone.") | tojson }})'>
+          <input type="hidden" name="id" value="{{ p.user.id }}"><button class="button ghost small">Remove</button></form></td>
+      </tr>
+    {% else %}<tr><td colspan="8">No one yet. Invite someone above.</td></tr>{% endfor %}</tbody>
+  </table></div>
+  <p class="tile-note">Removing someone deletes their database, Garmin key, Withings connection and uploads. Take their address off the Cloudflare policy as well.</p>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+  function copyInvite(btn) {
+    const t = document.getElementById('invite-text');
+    t.select();
+    // The clipboard API needs https; at home (http) the older copy command does it.
+    (navigator.clipboard && window.isSecureContext ? navigator.clipboard.writeText(t.value) : Promise.resolve(document.execCommand('copy')))
+      .then(() => { btn.textContent = 'Copied'; });
+  }
+</script>
+{% endblock %}

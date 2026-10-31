@@ -1,6 +1,8 @@
 # Garmin Connect sync via Garmin's official Personal API (https://developer.garmin.com/gc-developer-program/personal/).
 # The personal key (GARMIN_API_KEY) is exchanged for a 24-hour access token; the key itself expires on the date chosen
 # when it was created in Garmin Connect, after which a new one goes into .env. VO2 max is not offered by this API.
+# Friends paste their own key on the Setup page; it's kept in their database (kv 'garmin_api_key'), which also wins
+# over .env for the owner.
 import json
 import time
 from datetime import date, timedelta
@@ -8,22 +10,34 @@ from datetime import date, timedelta
 import requests
 
 from . import db
-from .config import GARMIN_API_KEY, HISTORY_START
+from .config import DB_PATH, GARMIN_API_KEY, HISTORY_START
 
 BASE = 'https://personal.connectapi.garmin.com'
 PAUSE = 1.0  # seconds between calls; Garmin publishes no rate limit, so stay gentle
 
 
+def api_key():
+    return db.kv_get('garmin_api_key') or (GARMIN_API_KEY if db.current.get() == DB_PATH else '')
+
+
 def has_key():
-    return bool(GARMIN_API_KEY)
+    return bool(api_key())
+
+
+def check_key(key):
+    """One token call, to tell a wrong or expired key straight away when it's pasted on the Setup page."""
+    r = requests.post(BASE + '/personalapitoken-service/personal-api/personal-api-key/token',
+                      headers={'Authorization': f'ApiKey {key}'}, timeout=30)
+    return r.status_code == 200
 
 
 class Client:
     def __init__(self):
-        if not GARMIN_API_KEY:
-            raise RuntimeError('GARMIN_API_KEY is missing: create a personal API key in Garmin Connect and add it to .env')
+        key = api_key()
+        if not key:
+            raise RuntimeError('No Garmin API key: create a personal API key in Garmin Connect and add it on the Setup page')
         r = requests.post(BASE + '/personalapitoken-service/personal-api/personal-api-key/token',
-                          headers={'Authorization': f'ApiKey {GARMIN_API_KEY}'}, timeout=30)
+                          headers={'Authorization': f'ApiKey {key}'}, timeout=30)
         if r.status_code != 200:
             raise RuntimeError(f'Garmin refused the API key (HTTP {r.status_code}); it may have expired')
         self.headers = {'Authorization': f'Bearer {r.text.strip()}', 'Accept': 'application/json'}

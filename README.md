@@ -74,8 +74,8 @@ so the importer can be taught that format.
 ### 6. Open it from outside (optional)
 
 The `tunnel` service in `docker-compose.yml` runs a Cloudflare Tunnel: it connects out to Cloudflare, so no router
-ports are opened. Cloudflare Access sits in front and only lets in the e-mail addresses you list. The dashboard
-itself has no login, so set up Access first.
+ports are opened. Cloudflare Access sits in front and only lets in the e-mail addresses you list; the dashboard reads
+who's logged in from Access, so set up Access first.
 
 1. **Access** (Cloudflare Zero Trust, free plan): Access controls → Applications → Self-hosted, hostname for example
    `fitness.example.com`, with an Allow policy for your e-mail addresses. Integrations → Identity providers: add
@@ -83,10 +83,27 @@ itself has no login, so set up Access first.
 2. **Tunnel:** Networking → Tunnels → Create tunnel (cloudflared). Add a published application route from the same
    hostname to `http://fitness-dashboard:8080`; Cloudflare creates the DNS record.
 3. Copy the tunnel token (the long text after `--token` in the Docker command) into `.env` as
-   `CLOUDFLARE_TUNNEL_TOKEN`, then Compose Up. The tunnel shows Healthy in Cloudflare once it's connected.
+   `CLOUDFLARE_TUNNEL_TOKEN`. Also set `CF_ACCESS_TEAM` (your team name, the first part of
+   `<team>.cloudflareaccess.com`), `CF_ACCESS_AUD` (the Access application's Application Audience (AUD) Tag),
+   `OWNER_EMAIL` (the address you log in with) and `PUBLIC_URL` (`https://fitness.example.com`). Then Compose Up. The
+   tunnel shows Healthy in Cloudflare once it's connected. Requests through it without a valid Access login are refused.
 4. **Withings** (only to press Connect Withings from outside; an existing connection keeps working): add
    `https://fitness.example.com/withings/callback` to the callback URLs of your Withings app and set it as
    `WITHINGS_REDIRECT_URI`.
+
+### 7. Share it with friends (optional)
+
+On the **People** page (only yours, under Setup in the menu), invite a friend by name and e-mail. They get a dashboard
+of their own: their own database, Garmin key, Withings connection and uploads, in `/data/users/`. Nothing of yours is
+shared, and the People page only shows whether their sync works. Then:
+
+1. Add their e-mail to the Allow policy of the Access application.
+2. Send them the message the page shows. They log in with a code by e-mail, paste their own Garmin personal API key on
+   Setup and press Connect Withings, which needs `https://fitness.example.com/withings/callback` in your Withings app
+   (step 6.4).
+
+Removing someone deletes their folder; take their address off the policy as well. At home, without Cloudflare in
+between, the dashboard is always yours.
 
 ## Run locally
 

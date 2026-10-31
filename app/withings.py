@@ -1,5 +1,7 @@
 # Withings public API (OAuth 2): body measurements from the Body Scan. Connect once on the Setup page; the refresh
 # token is stored in the kv table and renewed on every sync (Withings tokens last 3 hours, refresh tokens a year).
+# Everyone connects with the same developer app; the callback is WITHINGS_REDIRECT_URI at home and the outside
+# address through Cloudflare, so both must be registered in the Withings app.
 import json
 import secrets
 import time
@@ -9,7 +11,7 @@ from urllib.parse import urlencode
 import requests
 
 from . import db
-from .config import WITHINGS_CLIENT_ID, WITHINGS_CLIENT_SECRET, WITHINGS_REDIRECT_URI
+from .config import WITHINGS_CLIENT_ID, WITHINGS_CLIENT_SECRET
 
 AUTH_URL = 'https://account.withings.com/oauth2_user/authorize2'
 TOKEN_URL = 'https://wbsapi.withings.net/v2/oauth2'
@@ -35,12 +37,12 @@ def connected():
     return bool(db.kv_get('withings_token'))
 
 
-def auth_url():
+def auth_url(redirect_uri):
     state = secrets.token_urlsafe(16)
-    db.kv_set('withings_state', state)
+    db.kv_set('withings_state', {'state': state, 'redirect_uri': redirect_uri})
     return AUTH_URL + '?' + urlencode({
         'response_type': 'code', 'client_id': WITHINGS_CLIENT_ID, 'scope': 'user.metrics',
-        'redirect_uri': WITHINGS_REDIRECT_URI, 'state': state,
+        'redirect_uri': redirect_uri, 'state': state,
     })
 
 
@@ -56,9 +58,10 @@ def _token_call(params):
 
 
 def exchange_code(code, state):
-    if state != db.kv_get('withings_state'):
+    saved = db.kv_get('withings_state')
+    if not isinstance(saved, dict) or state != saved.get('state'):
         raise RuntimeError('Withings login expired or came from elsewhere: start again from the Setup page')
-    _token_call({'grant_type': 'authorization_code', 'code': code, 'redirect_uri': WITHINGS_REDIRECT_URI})
+    _token_call({'grant_type': 'authorization_code', 'code': code, 'redirect_uri': saved['redirect_uri']})
 
 
 def _access():

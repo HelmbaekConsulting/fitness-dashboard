@@ -27,6 +27,7 @@ PATHS = {
     'up': '<path d="M12 19V5M6.5 10.5 12 5l5.5 5.5"/>',
     'watch': '<rect x="6.5" y="6" width="11" height="12" rx="3"/><path d="M9 6l.7-3h4.6l.7 3M9 18l.7 3h4.6l.7-3M12 10v2.2l1.4 1"/>',
     'more': '<circle cx="6" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="18" cy="12" r="1.3"/>',
+    'users': '<circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.6 2.7-6 6-6s6 2.4 6 6M16 4.8a3.2 3.2 0 0 1 0 6.4M17.5 14.2c2.1.6 3.5 2.6 3.5 5.8"/>',
     'calendar': '<rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
 }
 

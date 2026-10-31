@@ -3,19 +3,24 @@
 {% macro status(r) %}
 {% if r %}<p class="tile-note">Last run {{ r.started[:10] | dmy }} {{ r.started[11:16] }}: <span class="{{ 'ok' if r.status == 'ok' else 'warn' }}">{{ r.status }}</span>{% if r.message %} · {{ r.message[:160] }}{% endif %}</p>{% endif %}
 {% endmacro %}
-<header class="page-head"><div><p class="eyebrow">Connections, imports and sync</p><h1>Setup</h1></div></header>
+<header class="page-head"><div><p class="eyebrow">Connections, imports and sync{% if not user.is_owner %} · {{ user.email }}{% endif %}</p><h1>Setup</h1></div></header>
 {% if msg %}<p class="flash">{{ msg }}</p>{% endif %}
 
 <section class="setup-grid">
   <div class="card">
     <h2>Garmin Connect</h2>
     {% if garmin_ready %}
-    <p class="ok">● Personal API key set.</p>
-    <p class="tile-note">The key expires on the date you chose in Garmin Connect. Then create a new one and replace GARMIN_API_KEY.</p>
+    <p class="ok">● Personal API key set{% if not garmin_saved %} (GARMIN_API_KEY in .env){% endif %}.</p>
+    <p class="tile-note">The key expires on the date you chose in Garmin Connect. Then create a new one and paste it here.</p>
     {% else %}
     <p class="warn">● No API key yet.</p>
-    <p>Create a personal API key in Garmin Connect (account settings → Personal API) and set it as GARMIN_API_KEY.</p>
+    <p>In Garmin Connect, create a personal API key (account settings → Personal API) with the longest expiry. It’s shown only once, so paste it here straight away.</p>
     {% endif %}
+    <form class="key-form" method="post" action="/garmin/key">
+      <input type="password" name="key" autocomplete="off" placeholder="{{ 'Paste a new key' if garmin_ready else 'Paste your Garmin API key' }}" aria-label="Garmin API key" required>
+      <button class="button small">{{ 'Replace' if garmin_ready else 'Save' }}</button>
+    </form>
+    {% if garmin_saved %}<form method="post" action="/garmin/key/remove"><button class="button ghost small">Remove key</button></form>{% endif %}
     {{ status(last.get('garmin')) }}
   </div>
 
@@ -42,7 +47,7 @@
       </label>
       <button class="button">Import</button>
     </form>
-    <p class="tile-note">MyFitnessPal, Cronometer, Jefit, Hevy or Strong exports. Imported straight away; files dropped in the <code>fitness-import</code> share are picked up every 15 minutes.</p>
+    <p class="tile-note">MyFitnessPal, Cronometer, Jefit, Hevy or Strong exports. Imported straight away{% if user.is_owner %}; files dropped in the <code>fitness-import</code> share are picked up every 15 minutes{% endif %}.</p>
     {{ status(last.get('import')) }}
     {% if imports %}
     <ul class="plain">{% for i in imports %}<li>{{ i.file }}: {{ i.kind }}, {{ i.rows }} rows</li>{% endfor %}</ul>

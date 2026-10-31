@@ -19,7 +19,11 @@ Personal health and fitness dashboard: FastAPI + Jinja + Chart.js, SQLite, one D
   published rate limit: keep `PAUSE` between calls and never loop live calls while testing. Never print the key or token.
 - Never commit `.env` or `data/`. Test against a throwaway `DATA_DIR`, not the real database.
 - Outside the home network: Cloudflare Tunnel (`tunnel` service in `docker-compose.yml`) behind Cloudflare Access
-  (README, step 6). The app has no login of its own yet; Access is the only gate, so never route a hostname without it.
+  (README, step 6). Access is the login: the `gate` middleware in `main.py` checks its signed token against
+  `CF_ACCESS_TEAM`/`CF_ACCESS_AUD`, so never route a hostname without an Access application.
+- People (`app/users.py`): the owner is `data/fitness.db` and everyone at home; friends invited on `/admin` get
+  `data/users/<id>/` (own database, Garmin key in kv, upload folder). `gate` sets `db.using(user.db_path)` per request
+  and jobs set it per person, so all queries hit that person's database. Never read one person's data in another's request.
 - Charts: one y-axis per chart, series colours in the fixed `--s1`…`--s8` order from `static/app.css`, dates shown
   dd/mm/yyyy.
 - Run locally: `.venv\Scripts\python -m uvicorn app.main:app --port 8080`. Check pages at desktop and 375 px width.

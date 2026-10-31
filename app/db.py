@@ -3,9 +3,13 @@ import json
 import sqlite3
 import threading
 from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime
 
 from .config import DB_PATH
+
+# Whose database a request or job uses: yours by default, a friend's while serving or syncing them (users.py).
+current = ContextVar('db_path', default=DB_PATH)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS raw (
@@ -51,8 +55,27 @@ COLUMNS = [
 _lock = threading.Lock()
 
 
+class Connection(sqlite3.Connection):
+    # "with connect() as con" closes as well as commits. Python 3.12's statement cache keeps every connection in a
+    # reference cycle, so one left open holds its database file until the garbage collector runs.
+    def __exit__(self, *exc):
+        try:
+            return super().__exit__(*exc)
+        finally:
+            self.close()
+
+
+@contextmanager
+def using(path):
+    token = current.set(path)
+    try:
+        yield
+    finally:
+        current.reset(token)
+
+
 def connect():
-    con = sqlite3.connect(DB_PATH, timeout=30)
+    con = sqlite3.connect(current.get(), timeout=30, factory=Connection)
     con.row_factory = sqlite3.Row
     con.execute('PRAGMA journal_mode=WAL')
     return con
@@ -109,6 +132,11 @@ def kv_get(key, default=None):
 def kv_set(key, value):
     with tx() as con:
         con.execute('INSERT OR REPLACE INTO kv VALUES (?,?)', (key, json.dumps(value)))
+
+
+def kv_del(key):
+    with tx() as con:
+        con.execute('DELETE FROM kv WHERE key=?', (key,))
 
 
 def log_start(source):

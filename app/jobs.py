@@ -1,43 +1,58 @@
-# Background jobs: Garmin and Withings sync at each SYNC_TIME, the import folder every 15 minutes.
+# Background jobs: Garmin and Withings sync for everyone at each SYNC_TIME, the import folders every 15 minutes. Each
+# person's jobs run against their own database (db.using).
 import logging
 import threading
 
 from apscheduler.schedulers.background import BackgroundScheduler
 
-from . import garmin, imports, withings
+from . import db, garmin, imports, users, withings
 from .config import SYNC_TIME
 
 log = logging.getLogger('jobs')
-_running = threading.Lock()
+_running = {}  # user id -> lock held while that person's sync runs
 
 
-def sync_all():
-    if not _running.acquire(blocking=False):
+def _lock(user):
+    return _running.setdefault(user.id, threading.Lock())
+
+
+def sync_user(user):
+    lock = _lock(user)
+    if not lock.acquire(blocking=False):
         return False
     try:
-        for name, job in (('withings', withings.sync), ('garmin', garmin.sync), ('import', imports.scan)):
-            try:
-                job()
-            except Exception:
-                log.exception('%s sync failed', name)
+        with db.using(user.db_path):
+            for name, job in (('withings', withings.sync), ('garmin', garmin.sync), ('import', lambda: imports.scan(user.import_dir))):
+                try:
+                    job()
+                except Exception:
+                    log.exception('%s sync failed for %s', name, user.id)
     finally:
-        _running.release()
+        lock.release()
     return True
 
 
-def is_running():
-    return _running.locked()
+def sync_all():
+    # One person after the other, so the APIs only ever see one sync at a time from the nightly run.
+    for user in users.everyone():
+        sync_user(user)
 
 
-def start_in_background():
-    threading.Thread(target=sync_all, daemon=True).start()
+def is_running(user):
+    return _lock(user).locked()
+
+
+def start_in_background(user):
+    threading.Thread(target=sync_user, args=(user,), daemon=True).start()
 
 
 def scan_imports():
-    try:
-        imports.scan()
-    except Exception:
-        log.exception('import scan failed')
+    for user in users.everyone():
+        try:
+            with db.using(user.db_path):
+                imports.scan(user.import_dir)
+        except Exception:
+            log.exception('import scan failed for %s', user.id)
 
 
 def start_scheduler():

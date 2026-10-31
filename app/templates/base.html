@@ -12,7 +12,7 @@
 <body>
 {% macro link(p, cls='') -%}
 {%- set key, label, href, ic = p -%}
-<a href="{{ href }}{% if key != 'setup' and query %}?{{ query }}{% endif %}" class="{{ cls }}{{ ' on' if key == page else '' }}"{% if key == page %} aria-current="page"{% endif %}>{{ icon(ic) }}<span>{{ label }}</span></a>
+<a href="{{ href }}{% if key not in ('setup', 'admin') and query %}?{{ query }}{% endif %}" class="{{ cls }}{{ ' on' if key == page else '' }}"{% if key == page %} aria-current="page"{% endif %}>{{ icon(ic) }}<span>{{ label }}</span></a>
 {%- endmacro %}
 <div class="app">
   <nav class="side" aria-label="Main">
@@ -20,11 +20,12 @@
     <div class="side-links">{% for p in sidebar %}{{ link(p) }}{% endfor %}</div>
     <div class="side-foot">
       {{ link(pages[-1]) }}
+      {% if admin %}{{ link(admin) }}{% endif %}
       {% if sync %}
       <div class="sync-card st-{{ sync.state }}">
         <div class="sync-title"><i class="dot"></i>{{ sync.title }}</div>
         <div>{{ sync.when }}</div>
-        <div class="muted">Garmin · Withings · Jefit</div>
+        <div class="muted">{% if not user.is_owner %}{{ user.name }} · {% endif %}Garmin · Withings · Jefit</div>
       </div>
       {% endif %}
     </div>
@@ -35,10 +36,10 @@
 </div>
 <nav class="tabbar" aria-label="Main">
   {% for p in pages[:4] %}{{ link(p, 'tab') }}{% endfor %}
-  {% set more_on = page in ['muscles', 'progress', 'nutrition', 'strength', 'setup'] %}
+  {% set more_on = page in ['muscles', 'progress', 'nutrition', 'strength', 'setup', 'admin'] %}
   <details class="more{{ ' on' if more_on else '' }}">
     <summary class="tab">{{ icon('more') }}<span>More</span></summary>
-    <div class="more-menu">{% for p in pages[4:] %}{{ link(p) }}{% endfor %}</div>
+    <div class="more-menu">{% for p in pages[4:] %}{{ link(p) }}{% endfor %}{% if admin %}{{ link(admin) }}{% endif %}</div>
   </details>
 </nav>
 <script>

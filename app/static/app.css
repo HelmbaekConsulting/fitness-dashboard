@@ -298,6 +298,17 @@ pre { background: var(--page); border: 1px solid var(--border); border-radius: 8
 .drop input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .upload .button { align-self: flex-start; }
 ul.plain { padding-left: 18px; margin: 8px 0; font-size: 14px; color: var(--ink-2); }
+.key-form, .invite-form { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+.key-form input, .invite-form input { flex: 1 1 180px; min-width: 0; padding: 8px 11px; }
+.key-form .button, .invite-form .button { align-self: center; }
+
+/* ---- People (admin) ---- */
+ol.steps { padding-left: 20px; margin: 10px 0 0; display: flex; flex-direction: column; gap: 12px; font-size: 14px; }
+.invite-text { display: block; width: 100%; margin: 8px 0; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px;
+  background: var(--page); color: var(--ink); font-family: inherit; font-size: 13px; line-height: 1.5; resize: vertical; }
+ul.checks { list-style: none; padding: 0; margin: 8px 0; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+ul.checks li { display: flex; gap: 8px; overflow-wrap: anywhere; }
+ul.checks span { color: var(--ink-2); }
 
 /* ---- Body figures ---- */
 .figs { display: flex; gap: 8px; justify-content: center; }
