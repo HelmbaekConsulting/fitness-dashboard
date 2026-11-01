@@ -1,0 +1,25 @@
+{# The page title with the date range: segmented ranges and custom dates. Included, so it sees the page's context. #}
+<header class="page-head">
+  <div>
+    <p class="eyebrow">{{ start | dmy }} – {{ end | dmy }}</p>
+    <h1>{{ title }}</h1>
+  </div>
+  <form class="filters" method="get">
+    {% if picked %}<input type="hidden" name="exercise" value="{{ picked }}">{% endif %}
+    {% if toggle %}<input type="hidden" name="{{ toggle.key }}" value="{{ toggle.value }}">{% endif %}
+    {% if type_filter %}<input type="hidden" name="type" value="{{ type_filter }}">{% endif %}
+    <div class="segmented chip-row">
+      {% for key, label, _ in ranges %}
+      <button type="submit" name="range" value="{{ key }}" class="{{ 'on' if key == range else '' }}">{{ label }}</button>
+      {% endfor %}
+    </div>
+    <details class="custom"{% if range == 'custom' %} open{% endif %}>
+      <summary class="{{ 'on' if range == 'custom' else '' }}">{{ icon('calendar', 16) }}<span>Dates</span></summary>
+      <div class="custom-body">
+        <label>From <input type="date" name="from" value="{{ start }}"></label>
+        <label>To <input type="date" name="to" value="{{ end }}"></label>
+        <button type="submit" class="button small">Apply</button>
+      </div>
+    </details>
+  </form>
+</header>

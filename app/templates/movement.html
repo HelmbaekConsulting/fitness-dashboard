@@ -1,0 +1,104 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import kpi_card %}
+{% block main %}
+{% include '_head.html' %}
+
+{% if not steps %}
+<section class="card"><p class="empty">No daily activity from Garmin in this range yet. It comes in with the next sync.</p></section>
+{% else %}
+<div class="row">
+  {% if rings %}
+  <section class="card col-5" aria-labelledby="h-goals">
+    <div class="card-head"><h2 id="h-goals">Goals</h2><span class="muted small">{{ rings.title }}{% if rings.partial %}, so far{% endif %}</span></div>
+    <div class="rings-main">
+      <svg class="goal-rings" width="168" height="168" viewBox="0 0 168 168" role="img"
+           aria-label="{% for r in rings.rings %}{{ r.label }} {{ r.pct_text }} of goal{{ ', ' if not loop.last }}{% endfor %}">
+        {% for r in rings.rings %}
+        <circle cx="84" cy="84" r="{{ r.r }}" class="track"></circle>
+        {% if r.pct > 0 %}<circle cx="84" cy="84" r="{{ r.r }}" class="prog" style="stroke: var(--{{ r.slot }})" pathLength="100"
+          stroke-dasharray="{{ '%.2f' % r.pct }} 100" transform="rotate(-90 84 84)"></circle>{% endif %}
+        {% endfor %}
+      </svg>
+      <div class="ring-text">
+        <p class="verdict">{{ rings.verdict }}</p>
+        <ul class="ring-keys">
+          {% for r in rings.rings %}
+          <li><i style="background: var(--{{ r.slot }})"></i>
+            <div><div class="rk-label">{{ r.label }}{% if r.unit %} {{ r.unit }}{% endif %}</div><div class="rk-value"><b>{{ r.value }}</b> of {{ r.goal }}</div></div>
+            <span class="rk-pct{{ ' done' if r.done else '' }}">{% if r.done %}{{ icon('check', 13, 2) }}{% endif %}{{ r.pct_text }}</span></li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+  </section>
+  {% endif %}
+
+  {% set s = steps %}
+  <section class="card col-7" aria-labelledby="h-steps">
+    <div class="card-head"><h2 id="h-steps">Steps</h2>{% if s.goal %}<span class="muted small">Goal {{ s.goal }} a day</span>{% endif %}</div>
+    <div class="body-stats">
+      <div><div class="stat-label">Daily average</div><div class="big">{{ s.avg }}</div></div>
+      <div><div class="stat-label">Goal reached</div><div class="mid">{{ s.hits }}<span class="unit">of {{ s.of }} days</span></div>
+        <div class="stat-note">{{ '%.0f' % s.pct }}% of days</div></div>
+      <div><div class="stat-label">Streak</div><div class="mid">{{ s.streak }}<span class="unit">day{{ '' if s.streak == 1 else 's' }}</span></div>
+        <div class="stat-note">Longest in a year: {{ s.longest }}</div></div>
+      <div><div class="stat-label">Best day</div><div class="mid">{{ s.best }}</div><div class="stat-note">{{ s.best_day }}</div></div>
+    </div>
+    {% if charts and charts[0].id == 'steps' %}
+    <figure class="chart-fig"><div class="canvas-wrap t-steps"><canvas id="c-steps" role="img" aria-label="Steps per day against the goal"></canvas></div></figure>
+    {% endif %}
+  </section>
+</div>
+
+<div class="row kpis">{% for t in kpis %}{{ kpi_card(t) }}{% endfor %}</div>
+
+<div class="row">
+  {% if intensity %}
+  {% set ic = intensity %}
+  <section class="card col-7" aria-labelledby="h-int">
+    <div class="card-head"><h2 id="h-int">Intensity minutes</h2><span class="muted small">Vigorous minutes count double</span></div>
+    <div class="body-stats">
+      {% if ic.avg %}<div><div class="stat-label">Weekly average</div><div class="mid">{{ ic.avg }}<span class="unit">min</span></div></div>{% endif %}
+      {% if ic.goal %}<div><div class="stat-label">Weekly goal</div><div class="mid">{{ ic.goal }}<span class="unit">min</span></div></div>{% endif %}
+      {% if ic.of %}<div><div class="stat-label">Goal met</div><div class="mid">{{ ic.met }}<span class="unit">of {{ ic.of }} weeks</span></div></div>{% endif %}
+    </div>
+    <figure class="chart-fig"><div class="canvas-wrap t-int"><canvas id="c-intensity" role="img" aria-label="Intensity minutes per week against the goal"></canvas></div></figure>
+    <p class="note">The World Health Organization recommends at least 150 moderate or 75 vigorous minutes a week; the goal is the one set in Garmin Connect.</p>
+  </section>
+  {% endif %}
+
+  {% if week %}
+  <section class="card col-5" aria-labelledby="h-week">
+    <div class="card-head"><h2 id="h-week">Your week</h2><span class="muted small">Average steps per weekday</span></div>
+    <ul class="week-bars">
+      {% for r in week.rows %}
+      <li class="{{ r.tag }}"><span class="wd">{{ r.day }}</span><span class="wb"><i style="width: {{ '%.1f' % r.pct }}%"></i></span>
+        <span class="wv">{{ r.value }}</span></li>
+      {% endfor %}
+    </ul>
+    <p class="e-text">{{ week.text }}</p>
+  </section>
+  {% endif %}
+</div>
+
+{% if records %}
+<section class="card" aria-labelledby="h-rec">
+  <div class="card-head"><h2 id="h-rec">Records</h2><span class="muted small">All time, to {{ end | dmy }}</span></div>
+  <div class="record-grid">
+    {% for r in records %}
+    <div class="record"><div class="stat-label">{{ r.label }}</div><div class="mid">{{ r.value }}</div><div class="stat-note">{{ r.when }}</div></div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+{% endif %}
+
+<p class="source">Source: Garmin Connect daily summaries. Floors are counted by the watch’s barometer, about 3 m of climbing each.
+  Active time is Garmin’s active and highly active time, workouts included.</p>
+{% endblock %}
+
+{% block scripts %}
+<script id="chart-data" type="application/json">{{ charts | tojson }}</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="/static/charts.js?v={{ v }}"></script>
+{% endblock %}

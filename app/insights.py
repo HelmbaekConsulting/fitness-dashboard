@@ -295,7 +295,8 @@ def activity_rows(start, end, kind=None):
         zones = [(a.get(f'hrTimeInZone_{z}') or 0) / 60 for z in range(1, 6)]
         zt = sum(zones)
         out.append({
-            'day': r['day'], 'time': (r['start_time'] or '')[11:16], 'name': r['name'] or type_label(t), 'type': t, 'type_label': type_label(t),
+            'id': r['id'], 'day': r['day'], 'time': (r['start_time'] or '')[11:16], 'name': r['name'] or type_label(t), 'type': t,
+            'type_label': type_label(t),
             'duration_s': r['duration_s'], 'distance_km': (r['distance_m'] or 0) / 1000 or None, 'pace': _pace(a, t),
             'kcal': r['kcal'], 'avg_hr': r['avg_hr'], 'max_hr': r['max_hr'], 'load': r['training_load'],
             'aerobic': r['aerobic_te'], 'anaerobic': r['anaerobic_te'], 'effect': EFFECT_LABELS.get(a.get('trainingEffectLabel'), ''),

@@ -5,7 +5,7 @@
 # over .env for the owner.
 import json
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 import requests
 
@@ -14,6 +14,7 @@ from .config import DB_PATH, GARMIN_API_KEY, HISTORY_START
 
 BASE = 'https://personal.connectapi.garmin.com'
 PAUSE = 1.0  # seconds between calls; Garmin publishes no rate limit, so stay gentle
+EXTRACT_VERSION = 2  # raise when extract_day changes; reextract() then re-reads the stored days
 
 
 def api_key():
@@ -59,10 +60,36 @@ def _num(d, *path):
     return d if isinstance(d, (int, float)) and not isinstance(d, bool) else None
 
 
+def _clock(ms, evening=False):
+    """Hour of the day from Garmin's "local" epoch milliseconds (local time written as if it were UTC); with evening,
+    times after midnight count on from 24, so a 00:30 bedtime is 24.5 and sorts after 23:30."""
+    if not isinstance(ms, (int, float)) or not ms:
+        return None
+    t = datetime.fromtimestamp(ms / 1000, timezone.utc)
+    h = t.hour + t.minute / 60
+    return h + 24 if evening and h < 15 else h
+
+
 def extract_day(con, day, kind, data):
     m = lambda name, value: db.put_metric(con, day, name, value, 'garmin')
+    hours = lambda seconds: seconds / 3600 if seconds is not None else None
     if kind == 'summary':
         m('steps', _num(data, 'totalSteps'))
+        m('step_goal', _num(data, 'dailyStepGoal'))
+        dist = _num(data, 'totalDistanceMeters')
+        m('distance_km', dist / 1000 if dist is not None else None)
+        m('floors', _num(data, 'floorsAscended'))
+        m('floor_goal', _num(data, 'userFloorsAscendedGoal'))
+        act, high = _num(data, 'activeSeconds'), _num(data, 'highlyActiveSeconds')
+        if act is not None or high is not None:
+            m('active_min', ((act or 0) + (high or 0)) / 60)
+        m('intensity_goal', _num(data, 'intensityMinutesGoal'))  # a weekly goal in Garmin Connect
+        for key, name in (('restStressDuration', 'stress_rest_h'), ('lowStressDuration', 'stress_low_h'),
+                          ('mediumStressDuration', 'stress_med_h'), ('highStressDuration', 'stress_high_h')):
+            m(name, hours(_num(data, key)))
+        m('resp_waking', _num(data, 'avgWakingRespirationValue'))
+        m('bb_charged', _num(data, 'bodyBatteryChargedValue'))
+        m('bb_drained', _num(data, 'bodyBatteryDrainedValue'))
         m('resting_hr', _num(data, 'restingHeartRate'))
         stress = _num(data, 'averageStressLevel')
         m('stress_avg', stress if stress is not None and stress >= 0 else None)
@@ -86,8 +113,29 @@ def extract_day(con, day, kind, data):
                 if _num(s, key) is not None:
                     m(name, s[key] / 3600)
             m('sleep_score', _num(s, 'sleepScores', 'overall', 'value'))
+            m('bedtime', _clock(s.get('sleepStartTimestampLocal'), evening=True))
+            m('waketime', _clock(s.get('sleepEndTimestampLocal')))
+            m('spo2_sleep', _num(s, 'averageSpO2Value'))
+            m('spo2_low', _num(s, 'lowestSpO2Value'))
+            m('resp_sleep', _num(s, 'averageRespirationValue'))
+            m('sleep_stress', _num(s, 'avgSleepStress'))
+            m('awake_count', _num(s, 'awakeCount'))
     elif kind == 'hrv':
         m('hrv_sleep', _num(data, 'hrvSummary', 'lastNightAvg'))
+        m('hrv_base_low', _num(data, 'hrvSummary', 'baseline', 'balancedLow'))
+        m('hrv_base_high', _num(data, 'hrvSummary', 'baseline', 'balancedUpper'))
+
+
+def reextract():
+    """Re-reads the stored daily responses after extract_day changed, without calling Garmin."""
+    if db.kv_get('garmin_extract_version') == EXTRACT_VERSION:
+        return
+    with db.tx() as con:
+        for r in con.execute("SELECT day, kind, json FROM raw WHERE source='garmin'").fetchall():
+            data = json.loads(r['json'])
+            if '_error' not in data:
+                extract_day(con, r['day'], r['kind'], data)
+    db.kv_set('garmin_extract_version', EXTRACT_VERSION)
 
 
 def fetch_day(g, con, day):

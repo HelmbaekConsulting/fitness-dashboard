@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% from 'macros.html' import readiness_card %}
+{% from 'macros.html' import readiness_card, kpi_card %}
 {% block main %}
 <header class="page-head">
   <div>
@@ -74,25 +74,7 @@
 </div>
 
 <div class="row kpis">
-  {% for t in kpis %}
-  <article class="card kpi">
-    <div class="kpi-head"><span class="chip-icon">{{ icon(t.icon, 16) }}</span>{{ t.label }}
-      {% if t.status %}<span class="kpi-status tone-{{ t.status[0] }}">{{ icon(t.status[2], 13, 2) }}<span>{{ t.status[1] }}</span></span>{% endif %}</div>
-    {% if t.value is none %}
-    <div class="kpi-value muted">No data</div>
-    {% else %}
-    <div class="kpi-value">{{ t.value }}<span class="unit">{{ t.unit }}</span></div>
-    <div class="kpi-delta">{{ t.delta }}</div>
-    {% endif %}
-    <svg class="spark" viewBox="0 0 200 44" preserveAspectRatio="none" aria-hidden="true">
-      {% if t.band %}<path d="{{ t.band }}" class="sp-band"></path>{% endif %}
-      {% if t.line %}<path d="{{ t.line }}" class="sp-line" vector-effect="non-scaling-stroke"></path>{% endif %}
-      {% if t.bars %}<path d="{{ t.bars.old }}" class="sp-bar old"></path><path d="{{ t.bars.now }}" class="sp-bar"></path>
-        {% if t.bars.target %}<path d="M0 {{ t.bars.target }}H200" class="sp-target" vector-effect="non-scaling-stroke"></path>{% endif %}{% endif %}
-    </svg>
-    <div class="kpi-foot"><span>{{ t.foot[0] }}</span><span>{{ t.foot[1] }}</span></div>
-  </article>
-  {% endfor %}
+  {% for t in kpis %}{{ kpi_card(t) }}{% endfor %}
 </div>
 
 <div class="row">
@@ -126,7 +108,7 @@
       {% for s in tr.sessions %}
       <li>
         <span class="chip-icon lg">{{ icon(s.icon, 20) }}</span>
-        <div class="s-title"><div class="s-name">{{ s.title }}</div><div class="s-sub">{{ s.sub }}</div></div>
+        <div class="s-title"><div class="s-name">{% if s.href %}<a href="{{ s.href }}">{{ s.title }}</a>{% else %}{{ s.title }}{% endif %}</div><div class="s-sub">{{ s.sub }}</div></div>
         <dl class="s-metrics">{% for label, value in s.metrics %}<div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>{% endfor %}</dl>
       </li>
       {% endfor %}
@@ -172,5 +154,5 @@
 {% block scripts %}
 <script id="chart-data" type="application/json">{{ charts | tojson }}</script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-<script src="/static/charts.js"></script>
+<script src="/static/charts.js?v={{ v }}"></script>
 {% endblock %}

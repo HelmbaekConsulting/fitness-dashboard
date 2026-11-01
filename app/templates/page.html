@@ -1,30 +1,7 @@
 {% extends 'base.html' %}
 {% from 'macros.html' import readiness_card %}
 {% block main %}
-<header class="page-head">
-  <div>
-    <p class="eyebrow">{{ start | dmy }} – {{ end | dmy }}</p>
-    <h1>{{ title }}</h1>
-  </div>
-  <form class="filters" method="get">
-    {% if picked %}<input type="hidden" name="exercise" value="{{ picked }}">{% endif %}
-    {% if toggle %}<input type="hidden" name="{{ toggle.key }}" value="{{ toggle.value }}">{% endif %}
-    {% if type_filter %}<input type="hidden" name="type" value="{{ type_filter }}">{% endif %}
-    <div class="segmented chip-row">
-      {% for key, label, _ in ranges %}
-      <button type="submit" name="range" value="{{ key }}" class="{{ 'on' if key == range else '' }}">{{ label }}</button>
-      {% endfor %}
-    </div>
-    <details class="custom"{% if range == 'custom' %} open{% endif %}>
-      <summary class="{{ 'on' if range == 'custom' else '' }}">{{ icon('calendar', 16) }}<span>Dates</span></summary>
-      <div class="custom-body">
-        <label>From <input type="date" name="from" value="{{ start }}"></label>
-        <label>To <input type="date" name="to" value="{{ end }}"></label>
-        <button type="submit" class="button small">Apply</button>
-      </div>
-    </details>
-  </form>
-</header>
+{% include '_head.html' %}
 
 {% if toggle %}
 <div class="seg-toggle" role="tablist">{% for t in toggle.options %}<a href="{{ t.href }}" class="{{ 'on' if t.on else '' }}" role="tab" aria-selected="{{ 'true' if t.on else 'false' }}">{{ t.label }}</a>{% endfor %}</div>
@@ -103,6 +80,33 @@
     {% if t.note %}<div class="tile-note">{{ t.note }}</div>{% endif %}
   </div>
   {% endfor %}
+</section>
+{% endif %}
+
+{% if schedule %}
+{% set s = schedule %}
+<section class="card sleep-card" aria-labelledby="h-sched">
+  <div class="card-head"><h2 id="h-sched">Sleep schedule</h2><span class="muted small">Last 30 nights, {{ s.from }} – {{ s.to }}</span></div>
+  <div class="body-stats">
+    {% for st in s.stats %}
+    <div><div class="stat-label">{{ st.label }}</div><div class="mid">{{ st.value }}</div>{% if st.note %}<div class="stat-note">{{ st.note }}</div>{% endif %}</div>
+    {% endfor %}
+  </div>
+  <div class="sched" role="img" aria-label="Bedtime and wake time for each night">
+    <div class="sched-axis">{% for t in s.ticks %}<span style="top: {{ '%.2f' % t.pos }}%">{{ t.label }}</span>{% endfor %}</div>
+    <div class="sched-plot">
+      {% for t in s.ticks %}<i class="sched-grid" style="top: {{ '%.2f' % t.pos }}%"></i>{% endfor %}
+      <i class="sched-avg" style="top: {{ '%.2f' % s.avg_bed }}%"></i><i class="sched-avg" style="top: {{ '%.2f' % s.avg_wake }}%"></i>
+      <div class="sched-cols">
+        {% for c in s.cols %}
+        <span class="sched-col" title="{{ c.title }}">{% if not c.empty %}<b class="{{ 'we' if c.weekend else '' }}" style="top: {{ '%.2f' % c.top }}%; height: {{ '%.2f' % c.height }}%"></b>{% endif %}</span>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  <div class="legend"><span><i class="key-sq" style="background: var(--s7)"></i>Weekday night</span><span><i class="key-sq" style="background: var(--s5)"></i>Friday or Saturday night</span>
+    <span><i class="key-line dashed"></i>Averages</span></div>
+  <p class="e-text">{{ s.text }}</p>
 </section>
 {% endif %}
 
@@ -230,7 +234,7 @@
     <tbody>{% for a in activity_rows %}
       <tr class="{{ 'dup' if a.duplicate else '' }}">
         <td class="c-when"><span class="when">{{ a.day | dmy }}</span><span class="sub">{{ a.time }}</span></td>
-        <td class="c-name"><span class="act-name">{{ a.name }}</span><span class="sub">{{ a.type_label }}{% if a.source %} · {{ a.source }}{% endif %}{% if a.duplicate %} · <b>duplicate, not counted</b>{% endif %}</span></td>
+        <td class="c-name"><a class="act-name" href="/activity/{{ a.id }}">{{ a.name }}</a><span class="sub">{{ a.type_label }}{% if a.source %} · {{ a.source }}{% endif %}{% if a.duplicate %} · <b>duplicate, not counted</b>{% endif %}</span></td>
         <td class="num" data-label="Time">{% if a.duration_s %}{{ (a.duration_s // 3600) | int }}:{{ '%02d' % ((a.duration_s % 3600) // 60) }}{% endif %}</td>
         <td class="num" data-label="Distance">{{ '%.2f km' % a.distance_km if a.distance_km else '' }}</td>
         <td class="num" data-label="Pace">{{ a.pace or '' }}</td>
@@ -257,6 +261,6 @@
 {% block scripts %}
 <script id="chart-data" type="application/json">{{ (charts or []) | tojson }}</script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-<script src="/static/charts.js"></script>
-{% if frames %}<script src="/static/timeline.js"></script>{% endif %}
+<script src="/static/charts.js?v={{ v }}"></script>
+{% if frames %}<script src="/static/timeline.js?v={{ v }}"></script>{% endif %}
 {% endblock %}

@@ -1,0 +1,122 @@
+{% extends 'base.html' %}
+{% block main %}
+{% include '_head.html' %}
+
+<div class="row">
+  {% if year %}
+  <section class="card col-7" aria-labelledby="h-year">
+    <div class="card-head"><h2 id="h-year">{{ year.year }} so far</h2><span class="muted small">To {{ year.through }}, against the same days of {{ year.last }}</span></div>
+    <div class="ytd-stats">
+      {% for s in year.stats %}
+      <div>
+        <div class="stat-label">{{ s.label }}</div>
+        <div class="mid">{{ s.value }}<span class="unit">{{ s.unit }}</span></div>
+        <div class="stat-change">{% if s.change %}<span class="chg {{ s.change.dir }}">{{ icon(s.change.dir, 12, 2.2) }}{{ s.change.text }}</span>{% endif %}
+          <span class="muted">{{ s.before }} in {{ year.last }}</span></div>
+      </div>
+      {% endfor %}
+    </div>
+    {% if year.sports %}
+    <div class="ytd-sports" role="table" aria-label="Hours per sport, {{ year.year }} and {{ year.last }}">
+      <div class="ytd-key"><span><i class="key-sq" style="background: var(--s1)"></i>{{ year.year }}</span><span><i class="key-sq faded" style="background: var(--s1)"></i>{{ year.last }}</span><span class="push muted">hours</span></div>
+      {% for s in year.sports %}
+      <div class="ytd-row" role="row">
+        <span class="chip-icon">{{ icon(s.icon, 16) }}</span>
+        <span class="ytd-name" role="cell">{{ s.label }}</span>
+        <span class="ytd-bars" role="cell"><i class="now" style="width: {{ '%.1f' % s.now_pct }}%"></i><i class="then" style="width: {{ '%.1f' % s.then_pct }}%"></i></span>
+        <span class="ytd-num" role="cell"><b>{{ s.now }}</b><span class="muted">{{ s.then }}</span></span>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {% set c = consistency %}
+  <section class="card col-5" aria-labelledby="h-cons">
+    <div class="card-head"><h2 id="h-cons">Consistency</h2><span class="muted small">Weeks with {{ c.target }}+ training days</span></div>
+    <div class="body-stats">
+      <div><div class="stat-label">Current run</div><div class="big">{{ c.current }}<span class="unit">week{{ '' if c.current == 1 else 's' }}</span></div></div>
+      <div><div class="stat-label">Longest, 2 years</div><div class="mid">{{ c.longest }}<span class="unit">weeks</span></div></div>
+      <div><div class="stat-label">Days per week</div><div class="mid">{{ c.avg }}</div><div class="stat-note">last 15 weeks</div></div>
+    </div>
+    <div class="weeks" role="img" aria-label="Training days in each of the last {{ c.weeks | length }} weeks">
+      {% for w in c.weeks %}
+      <div class="wk{{ ' hit' if w.hit else '' }}{{ ' now' if w.now else '' }}" title="{{ w.title }}">
+        <span class="wk-col">{% for on in w.cells %}<i class="{{ 'on' if on else '' }}"></i>{% endfor %}</span>
+        <span class="wk-n">{{ w.n }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    <p class="e-text">{% if c.this_week >= c.target %}This week already counts.{% else %}{{ c.target - c.this_week }} more training day{{ '' if c.target - c.this_week == 1 else 's' }} this week keeps the run going.{% endif %}</p>
+  </section>
+</div>
+
+{% if bests %}
+<section class="card" aria-labelledby="h-pb">
+  <div class="card-head"><h2 id="h-pb">Personal bests</h2>
+    <span class="muted small">All time, to {{ end | dmy }}{% if ftp %} · FTP {{ ftp.value }} W ({{ ftp.when }}, Garmin’s estimate){% endif %}</span></div>
+  {% for g in bests %}
+  <div class="pb-group">
+    <h3>{{ icon(g.icon, 16) }}{{ g.title }}</h3>
+    <div class="pb-grid">
+      {% for p in g.bests %}
+      <a class="pb{{ ' new' if p.new else '' }}" href="/activity/{{ p.id }}" title="{{ p.name }}">
+        <span class="stat-label">{{ p.label }}{% if p.new %}<span class="badge">In range</span>{% endif %}</span>
+        <span class="pb-value">{{ p.value }}</span>
+        <span class="stat-note">{{ p.when }}{% if p.range %} · best in range {{ p.range }}{% endif %}</span>
+      </a>
+      {% endfor %}
+    </div>
+    {% if g.note %}<p class="note">{{ g.note }}</p>{% endif %}
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+{% if focus %}
+<div class="row">
+  <section class="card col-5" aria-labelledby="h-focus">
+    <div class="card-head"><h2 id="h-focus">Training focus</h2><span class="muted small">{{ focus.sessions }} sessions, load {{ focus.total }}</span></div>
+    <div class="comp-bar focus-bar" role="img" aria-label="{% for r in focus.rows %}{{ r.label }} {{ '%.0f' % r.pct }}%{{ ', ' if not loop.last }}{% endfor %}">
+      {% for r in focus.rows %}<span style="flex: {{ '%.2f' % r.pct }} 1 0; background: var(--{{ r.slot }})"></span>{% endfor %}
+    </div>
+    <ul class="focus-rows">
+      {% for r in focus.rows %}
+      <li><i class="key-sq" style="background: var(--{{ r.slot }})"></i>
+        <div><div class="k-title">{{ r.label }} <b>{{ '%.0f' % r.pct }}%</b></div><div class="stat-note">{{ r.what }} · {{ r.n }} session{{ '' if r.n == 1 else 's' }}, {{ r.hours }} h</div></div></li>
+      {% endfor %}
+    </ul>
+    <p class="e-text">{{ focus.text }}</p>
+  </section>
+  {% set c = charts[0] %}
+  <figure class="card col-7">
+    <figcaption><h2>{{ c.title }}</h2><span class="unit-tag">{{ c.unit }}</span></figcaption>
+    <div class="canvas-wrap"><canvas id="c-{{ c.id }}"></canvas></div>
+    <p class="note">{{ c.note }}</p>
+  </figure>
+</div>
+{% endif %}
+
+{% set rest = charts[1:] if focus else charts %}
+{% if rest %}
+<section class="charts">
+  {% for c in rest %}
+  <figure class="card">
+    <figcaption><h2>{{ c.title }}</h2><span class="unit-tag">{{ c.unit }}</span></figcaption>
+    {% if c.empty %}<div class="empty">No data for this range yet.</div>{% else %}<div class="canvas-wrap"><canvas id="c-{{ c.id }}"></canvas></div>{% endif %}
+    {% if c.note %}<p class="note">{{ c.note }}</p>{% endif %}
+  </figure>
+  {% endfor %}
+</section>
+{% endif %}
+
+<p class="source">Source: Garmin Connect activities. The year so far and consistency always run to today; the rest follows the range.
+  Typed-in activities that repeat a watch recording are left out.</p>
+{% endblock %}
+
+{% block scripts %}
+<script id="chart-data" type="application/json">{{ charts | tojson }}</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="/static/charts.js?v={{ v }}"></script>
+{% endblock %}

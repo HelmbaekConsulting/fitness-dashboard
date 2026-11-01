@@ -12,6 +12,12 @@ Personal health and fitness dashboard: FastAPI + Jinja + Chart.js, SQLite, one D
 - `app/today.py`: the Today page (readiness ring, body card, sparkline tiles, sessions, worth knowing, energy);
   `app/svg.py` builds its sparkline and ring paths, `app/icons.py` the line icons (`icon('name')` in templates).
   Layout: sidebar on desktop, bottom tab bar under 760 px (`templates/base.html`); new pages go in `PAGES` in `main.py`.
+- `app/movement.py` (Movement: goal rings, steps and streaks), `app/performance.py` (Performance: year so far,
+  consistency, personal bests, training focus, power curve, efficiency), `app/activity.py` (`/activity/<id>`: one
+  activity from its stored Garmin record), `app/sleep.py` (sleep schedule on Recovery). All read stored data only.
+  New daily Garmin fields go in `garmin.extract_day`; raise `EXTRACT_VERSION` so `garmin.reextract()` re-reads `raw` at start.
+- Templates: `_head.html` is the title with the date range; `macros.html` has the readiness and KPI cards. The page
+  context has a `range` variable, so templates can't call `range()`: build lists in Python. Static links carry `?v=`.
 - `app/figure.py`: the SVG body figure (front/back, one shape per muscle, tagged with its Withings segment);
   `app/muscles.py`: exercise name → muscles. `static/timeline.js` plays the month frames on "Training vs body".
 - Jefit backups replace all earlier Jefit sets (`source = 'jefit'`); exercises are grouped by Jefit's exercise id.

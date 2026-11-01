@@ -1,6 +1,7 @@
 # Web app: one page per area, every page filtered by the date range in the query string (?range=90d or ?from=&to=).
 # Every request reads one person's database: yours at home, whoever Cloudflare Access logged in from outside (gate).
 import base64
+import hashlib
 import html
 import secrets
 from contextlib import asynccontextmanager
@@ -15,7 +16,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from . import db, figure, garmin, icons, imports, insights, jobs, muscles, today, users, withings
+from . import (activity, db, figure, garmin, icons, imports, insights, jobs, movement, muscles, performance, sleep, today, users,
+               withings)
 from . import queries as q
 from .config import (CF_ACCESS_AUD, CF_ACCESS_TEAM, DASHBOARD_PASSWORD, IMPORT_DIR, OWNER_EMAIL, PUBLIC_URL, SYNC_TIME,
                      WITHINGS_REDIRECT_URI)
@@ -24,15 +26,18 @@ BASE = Path(__file__).parent
 templates = Jinja2Templates(directory=BASE / 'templates')
 templates.env.filters['dmy'] = lambda iso: f'{iso[8:10]}/{iso[5:7]}/{iso[:4]}' if iso else ''
 templates.env.globals['icon'] = icons.icon
+# Static links carry a hash of the files (?v=), so browsers fetch new styles and scripts after an update.
+templates.env.globals['v'] = hashlib.sha1(b''.join(p.read_bytes() for p in sorted((BASE / 'static').iterdir()) if p.is_file())).hexdigest()[:10]
 
 RANGES = [('30d', '30 days', 30), ('90d', '90 days', 90), ('6m', '6 months', 182), ('1y', '1 year', 365),
           ('3y', '3 years', 1095), ('all', 'All', None)]
 # key, label, path, icon. Phones show the first four in the tab bar and the rest under More.
 PAGES = [('today', 'Today', '/', 'sun'), ('body', 'Body', '/body', 'scale'), ('training', 'Training', '/training', 'flame'),
-         ('recovery', 'Recovery', '/recovery', 'heart'), ('muscles', 'Muscles', '/muscles', 'figure'),
+         ('recovery', 'Recovery', '/recovery', 'heart'), ('movement', 'Movement', '/movement', 'walk'),
+         ('performance', 'Performance', '/performance', 'trophy'), ('muscles', 'Muscles', '/muscles', 'figure'),
          ('progress', 'Training vs body', '/progress', 'trend'), ('nutrition', 'Nutrition', '/nutrition', 'utensils'),
          ('strength', 'Strength', '/strength', 'dumbbell'), ('setup', 'Setup', '/setup', 'gear')]
-SIDEBAR_ORDER = ['today', 'body', 'muscles', 'progress', 'training', 'recovery', 'nutrition', 'strength']
+SIDEBAR_ORDER = ['today', 'body', 'muscles', 'progress', 'movement', 'training', 'performance', 'recovery', 'nutrition', 'strength']
 # The owner's admin page, after Setup in the menus.
 ADMIN = ('admin', 'People', '/admin', 'users')
 REFUSED = ('<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, '
@@ -47,6 +52,7 @@ async def lifespan(app):
         with db.using(user.db_path):
             db.init()
             withings.reextract()
+            garmin.reextract()
     sched = jobs.start_scheduler()
     yield
     sched.shutdown(wait=False)
@@ -379,8 +385,6 @@ def training(request: Request):
             series('Fatigue (7-day)', [(d, a) for d, _, a in load], 2)]),
         chart('form', 'Form (fitness minus fatigue)', 'load', [series('Form', [(d, c - a) for d, c, a in load], 1, 'bar')],
               'Below zero: carrying fatigue. Well above zero: rested, or losing fitness.', kind='bar'),
-        chart('intensity', 'Intensity minutes per week', 'min', [series('Intensity minutes', q.weekly(q.daily('intensity_min', start, end), 'sum'), 1, 'bar')],
-              'Vigorous minutes count double, as in Garmin Connect.', kind='bar', zero=True),
     ]
     return render(request, 'training', {'_range': (rng, start, end), 'title': 'Training', 'tiles': tiles, 'charts': charts,
                                         'calendar': cal, 'calendar_active': active, 'calendar_from': cal_start.isoformat(),
@@ -396,7 +400,7 @@ def recovery(request: Request):
     tiles = []
     for metric, label, unit, fmt, better in (('resting_hr', 'Resting HR', 'bpm', '{:.0f}', 'down'), ('sleep_h', 'Sleep', 'h', '{:.1f}', 'up'),
                                              ('hrv_sleep', 'Overnight HRV', 'ms', '{:.0f}', 'up'), ('stress_avg', 'Stress', '', '{:.0f}', 'down'),
-                                             ('body_battery_high', 'Body Battery peak', '', '{:.0f}', 'up'), ('steps', 'Steps', '', '{:,.0f}', 'up')):
+                                             ('body_battery_high', 'Body Battery peak', '', '{:.0f}', 'up')):
         v, d = avg_change(q.daily(metric, *week), q.daily(metric, *prev))
         tiles.append(tile(label, v, unit, fmt, d, better, 'last 7 days vs the 7 before'))
     stages = [('Deep', 'sleep_deep_h', 1), ('Light', 'sleep_light_h', 3), ('REM', 'sleep_rem_h', 7), ('Awake', 'sleep_awake_h', 4)]
@@ -413,10 +417,73 @@ def recovery(request: Request):
         chart('bb', 'Body Battery', '', [series('Peak', q.rolling(q.daily('body_battery_high', start, end)), 1),
                                          series('Low', q.rolling(q.daily('body_battery_low', start, end)), 2)], '7-day averages.'),
         chart('stress', 'Average stress', '', trend('Stress', q.daily('stress_avg', start, end))),
-        chart('steps', 'Steps per day, weekly average', 'steps', [series('Steps', q.weekly(q.daily('steps', start, end)), 1, 'bar')], kind='bar', zero=True),
+        chart('stress-time', 'Time at each stress level, daily average per week', 'h',
+              [series(lbl, q.weekly(q.daily(m, start, end)), slot, 'bar') for lbl, m, slot in
+               (('Rest', 'stress_rest_h', 1), ('Low', 'stress_low_h', 4), ('Medium', 'stress_med_h', 2), ('High', 'stress_high_h', 8))],
+              'Garmin’s stress levels from heart-rate variability while you’re awake and still. Rest: 0–25, low: 26–50, '
+              'medium: 51–75, high: 76–100.', kind='bar', stacked=True, zero=True),
+        chart('spo2', 'Blood oxygen while asleep', '%', [
+            series('Average, 7-day avg', q.rolling(q.daily('spo2_sleep', start, end)), 1),
+            series('Lowest, 7-day avg', q.rolling(q.daily('spo2_low', start, end)), 2)],
+            'Pulse oximetry from the watch. Healthy adults usually average 95–100% at night; wrist readings run a little low and '
+            'vary with fit and movement. A guide, not a diagnosis.'),
+        chart('resp', 'Breathing rate', 'per min', [
+            series('Asleep, 7-day avg', q.rolling(q.daily('resp_sleep', start, end)), 1),
+            series('Awake, 7-day avg', q.rolling(q.daily('resp_waking', start, end)), 3)],
+            'Breaths per minute. A rise of a few breaths over your normal while asleep can come before illness.'),
     ]
     return render(request, 'recovery', {'_range': (rng, start, end), 'title': 'Recovery', 'tiles': tiles, 'charts': charts,
-                                        'ready': today.readiness(end), 'source': 'Garmin Connect'})
+                                        'ready': today.readiness(end), 'schedule': sleep.schedule(end), 'source': 'Garmin Connect'})
+
+
+def specs(items):
+    """Series from the page modules (dicts with label, data, slot, style) as chart series."""
+    return [series(s['label'], s['data'], s['slot'], s.get('style', 'line')) for s in items]
+
+
+@app.get('/movement', response_class=HTMLResponse)
+def movement_page(request: Request):
+    rng, start, end = parse_range(request)
+    ic = movement.intensity(start, end)
+    steps = movement.steps_chart(start, end)
+    charts = [chart('steps', 'Steps per day' if (end - start).days <= 120 else 'Steps per day, weekly average', 'steps',
+                    specs(steps), kind='bar', stacked=True, zero=True)] if steps else []
+    if ic:
+        charts.append(chart('intensity', 'Intensity minutes per week', 'min', specs(ic['series']), kind='bar', zero=True))
+    return render(request, 'movement', {
+        '_range': (rng, start, end), 'title': 'Movement', 'rings': movement.rings(end), 'steps': movement.steps_card(start, end),
+        'kpis': movement.kpis(start, end), 'intensity': ic, 'week': movement.weekday_pattern(start, end),
+        'records': movement.records(end), 'charts': charts}, 'movement.html')
+
+
+@app.get('/performance', response_class=HTMLResponse)
+def performance_page(request: Request):
+    rng, start, end = parse_range(request)
+    every = performance.everything(end)
+    focus = performance.training_focus(every, start, end)
+    charts = []
+    if focus:
+        c = focus['chart']
+        charts.append(chart(c['id'], c['title'], c['unit'], specs(c['series']), c['note'], kind='bar', stacked=True, zero=True))
+    curve = performance.power_curve(every, start, end)
+    if curve:
+        charts.append({**chart(curve['id'], curve['title'], curve['unit'], specs(curve['series']), curve['note'], zero=True),
+                       'xkind': 'seconds'})
+    for c in performance.efficiency(every, start, end):
+        charts.append({**chart(c['id'], c['title'], c['unit'], specs(c['series']), c['note']), 'spanGaps': True})
+    return render(request, 'performance', {
+        '_range': (rng, start, end), 'title': 'Performance', 'year': performance.year_so_far(every, date.today()),
+        'consistency': performance.consistency(date.today()), 'bests': performance.personal_bests(every, start, end),
+        'ftp': performance.ftp(end), 'focus': focus, 'charts': charts}, 'performance.html')
+
+
+@app.get('/activity/{activity_id}', response_class=HTMLResponse)
+def activity_page(request: Request, activity_id: str):
+    a = activity.build(activity_id)
+    if not a:
+        raise HTTPException(404)
+    t = date.today()
+    return render(request, 'training', {'_range': ('90d', t - timedelta(days=89), t), 'title': a['name'], 'a': a}, 'activity.html')
 
 
 @app.get('/nutrition', response_class=HTMLResponse)

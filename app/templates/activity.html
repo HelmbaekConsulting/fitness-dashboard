@@ -1,0 +1,135 @@
+{% extends 'base.html' %}
+{% block main %}
+<header class="page-head act-head">
+  <div class="act-title">
+    <a class="back-link" href="/training">{{ icon('back', 15, 2) }}Training</a>
+    <div class="act-name-row">
+      <span class="chip-icon xl">{{ icon(a.icon, 24) }}</span>
+      <div><p class="eyebrow">{{ a.type }} · {{ a.when }}{% if a.place %} · {{ a.place }}{% endif %}</p><h1>{{ a.name }}</h1></div>
+    </div>
+  </div>
+  <nav class="act-nav" aria-label="Other activities">
+    {% if a.prev %}<a class="pill-button" href="{{ a.prev.href }}" title="{{ a.prev.name }}, {{ a.prev.when }}">{{ icon('back', 16, 2) }}Older</a>{% endif %}
+    {% if a.next %}<a class="pill-button" href="{{ a.next.href }}" title="{{ a.next.name }}, {{ a.next.when }}">Newer{{ icon('arrow', 16, 2) }}</a>{% endif %}
+  </nav>
+</header>
+
+{% if a.manual %}<p class="flash">Typed in by hand (or synced from MyFitnessPal), so Garmin has no heart rate or training effect for it.</p>{% endif %}
+
+<section class="card hero-stats" aria-label="Summary">
+  {% for h in a.headline %}
+  <div><div class="stat-label">{{ h.label }}</div><div class="mid">{{ h.value }}{% if h.unit %}<span class="unit">{{ h.unit }}</span>{% endif %}</div></div>
+  {% endfor %}
+</section>
+
+{% if a.zones or a.effect %}
+<div class="row">
+  {% if a.zones %}
+  <section class="card col-7" aria-labelledby="h-zones">
+    <div class="card-head"><h2 id="h-zones">Heart-rate zones</h2>{% if a.zones.max_hr %}<span class="muted small">Max {{ a.zones.max_hr }} bpm</span>{% endif %}</div>
+    <ul class="zone-rows">
+      {% for z in a.zones.rows | reverse %}
+      <li><span class="zn"><b>Zone {{ z.z }}</b><span class="muted">{{ z.name }}</span></span>
+        <span class="zt"><i class="z{{ z.z }}" style="width: {{ '%.1f' % z.bar }}%"></i></span>
+        <span class="zv"><b>{{ z.min }} min</b><span class="muted">{{ '%.0f' % z.pct }}%</span></span></li>
+      {% endfor %}
+    </ul>
+    <p class="e-text">{{ a.zones.text }} Zones as set in Garmin Connect.</p>
+  </section>
+  {% endif %}
+  {% if a.effect %}
+  {% set e = a.effect %}
+  <section class="card col-5" aria-labelledby="h-te">
+    <div class="card-head"><h2 id="h-te">Training effect</h2>{% if e.label %}<span class="effect">{{ e.label }}</span>{% endif %}</div>
+    {% for kind, t in [('Aerobic', e.aerobic), ('Anaerobic', e.anaerobic)] if t %}
+    <div class="te">
+      <div class="te-head"><span class="stat-label">{{ kind }}</span><span class="te-word">{{ t.word }}</span></div>
+      <div class="te-row"><span class="te-value">{{ t.value }}</span>
+        <span class="te-gauge" aria-hidden="true">{% for w in t.segs %}<i><b style="width: {{ '%.0f' % w }}%"></b></i>{% endfor %}</span></div>
+    </div>
+    {% endfor %}
+    <p class="note">Garmin’s scale: 0 none, 1 minor, 2 maintaining, 3 improving, 4 highly improving, 5 overreaching.</p>
+  </section>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if a.splits or a.power or a.compared %}
+<div class="row">
+  {% if a.splits or a.power %}
+  <section class="card col-7" aria-labelledby="h-best">
+    <div class="card-head"><h2 id="h-best">{{ 'Fastest splits' if a.splits else 'Power bests' }}</h2><span class="muted small">Against your best before or on this day</span></div>
+    {% if a.splits %}
+    <ul class="split-rows">
+      {% for s in a.splits %}
+      <li><span class="stat-label">{{ s.label }}</span><b>{{ s.value }}</b><span class="muted">{{ s.pace }}</span>
+        {% if s.pb %}<span class="badge gold">{{ icon('trophy', 12, 2) }}Personal best</span>{% elif s.best %}<span class="muted small">best {{ s.best }}</span>{% endif %}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    {% if a.power %}
+    {% if a.splits %}<h3 class="sub-h">Power bests</h3>{% endif %}
+    <ul class="power-rows">
+      {% for p in a.power %}
+      <li><span class="pw-d">{{ p.label }}</span><span class="pw-bar"><i style="width: {{ '%.1f' % p.pct }}%"></i></span>
+        <span class="pw-v"><b>{{ p.value }} W</b>{% if p.pb %}<span class="badge gold">{{ icon('trophy', 12, 2) }}Best</span>{% else %}<span class="muted">{{ '%.0f' % p.pct }}%</span>{% endif %}</span></li>
+      {% endfor %}
+    </ul>
+    <p class="note">Bar: share of your best ever for that duration{% if a.power[0].best %}, up to this ride{% endif %}.</p>
+    {% endif %}
+  </section>
+  {% endif %}
+  {% if a.compared %}
+  {% set c = a.compared %}
+  <section class="card col-5" aria-labelledby="h-cmp">
+    <div class="card-head"><h2 id="h-cmp">Against your usual</h2><span class="muted small">{{ c.n }} {{ c.type }} sessions in the 90 days before</span></div>
+    <ul class="cmp-rows">
+      {% for r in c.rows %}
+      <li><span class="stat-label">{{ r.label }}</span><b>{{ r.value }}</b><span class="muted">usual {{ r.usual }}</span>
+        <span class="chg {{ r.dir }}">{% if r.dir != 'same' %}{{ icon(r.dir, 12, 2.2) }}{% endif %}{{ r.text }}</span></li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if a.run_walk %}
+<section class="card" aria-labelledby="h-rw">
+  <div class="card-head"><h2 id="h-rw">Running and walking</h2></div>
+  <div class="comp-bar">{% for p in a.run_walk %}<span style="flex: {{ '%.2f' % p.pct }} 1 0; background: var(--{{ p.slot }})"></span>{% endfor %}</div>
+  <div class="comp-keys">{% for p in a.run_walk %}<span><i class="key-sq" style="background: var(--{{ p.slot }})"></i>{{ p.label }}<b>{{ p.time }}</b>{{ p.km }} km</span>{% endfor %}</div>
+</section>
+{% endif %}
+
+{% if a.strength %}
+<section class="card table-card" aria-labelledby="h-str">
+  <div class="card-head"><h2 id="h-str">Sets</h2>{% if a.strength.jefit %}<span class="muted small">From Jefit · volume {{ a.strength.jefit.volume }} kg</span>{% endif %}</div>
+  {% if a.strength.jefit %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>Exercise</th><th class="num">Sets</th><th class="num">Volume, kg</th><th class="num">kcal</th></tr></thead>
+    <tbody>{% for e in a.strength.jefit.exercises %}<tr><td>{{ e.name }}</td><td class="num">{{ e.sets }}</td><td class="num">{{ e.volume }}</td><td class="num">{{ e.kcal or '' }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% elif a.strength.garmin %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>Exercise, as the watch logged it</th><th class="num">Sets</th><th class="num">Reps</th><th class="num">Heaviest, kg</th><th class="num">Volume, kg</th></tr></thead>
+    <tbody>{% for s in a.strength.garmin %}<tr><td>{{ s.name }}</td><td class="num">{{ s.sets }}</td><td class="num">{{ s.reps }}</td><td class="num">{{ s.max }}</td><td class="num">{{ s.volume }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if a.details %}
+<section class="card" aria-labelledby="h-det">
+  <div class="card-head"><h2 id="h-det">Details</h2></div>
+  <div class="detail-groups">
+    {% for g in a.details %}
+    <div><h3 class="sub-h">{{ g.title }}</h3>
+      <dl class="detail-list">{% for r in g.rows %}<div><dt>{{ r.label }}</dt><dd>{{ r.value }}</dd></div>{% endfor %}</dl></div>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<p class="source">Source: Garmin Connect, as recorded by the watch{% if a.strength and a.strength.jefit %}; sets from Jefit{% endif %}.</p>
+{% endblock %}

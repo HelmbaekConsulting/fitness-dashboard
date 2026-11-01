@@ -243,7 +243,7 @@ def training(end, ws):
         name = a['name'] or insights.type_label(a['type'])
         source = 'MyFitnessPal' if name.endswith('MyFitnessPal') else 'manual entry' if a['manual'] else 'Garmin'
         items.append({'when': a['start_time'] or a['day'], 'day': a['day'], 'seconds': a['duration_s'] or 0,
-                      'title': name.rsplit(' - MyFitnessPal', 1)[0], 'icon': type_icon(a['type'], name),
+                      'title': name.rsplit(' - MyFitnessPal', 1)[0], 'icon': type_icon(a['type'], name), 'href': f'/activity/{a["id"]}',
                       'sub': f'{short_date(a["day"], True)} · {source}', 'metrics': metrics[:4]})
     for w in ws:
         if w['day'] < s30.isoformat():
@@ -254,7 +254,7 @@ def training(end, ws):
         metrics.append(('Avg HR', f'{w["avg_hr"]:.0f}') if w['avg_hr'] else ('Lifts', str(len(w['exercise_list']))))
         items.append({'when': datetime.fromtimestamp(w['start_ts']).strftime('%Y-%m-%d %H:%M:%S') if w['start_ts'] else w['day'],
                       'day': w['day'], 'seconds': w['duration_s'] or 0, 'title': session_title(w['exercise_list']),
-                      'icon': 'dumbbell', 'metrics': metrics[:4],
+                      'icon': 'dumbbell', 'metrics': metrics[:4], 'href': f'/activity/{w["garmin"]["id"]}' if w['garmin'] else None,
                       'sub': f'{short_date(w["day"], True)} · Jefit' + (' and Garmin' if w['garmin'] else ', no watch recording')})
     items.sort(key=lambda i: i['when'], reverse=True)
     week = [i for i in items if i['day'] >= (end - timedelta(days=6)).isoformat()]

@@ -1,6 +1,8 @@
 // Draws the page's charts from the JSON the server embeds. Days are x values in ms on a linear axis, so gaps in the
 // data stay gaps and no date adapter is needed. Colours come from the CSS tokens, so dark mode follows the page.
 // A spec can carry marks ([{from, to, label}], shaded day ranges such as trips) and legend: false when the page draws its own.
+// xkind: 'seconds' puts durations on a log axis instead of days (the power curve). spanGaps joins lines across any gap
+// (trends through sessions weeks apart).
 (document.fonts ? document.fonts.ready : Promise.resolve()).then(function () {
   const specs = JSON.parse(document.getElementById('chart-data').textContent);
   const css = getComputedStyle(document.documentElement);
@@ -14,6 +16,8 @@
     return span > 400 * 864e5 ? `${months[d.getUTCMonth()]} ${d.getUTCFullYear()}` : `${d.getUTCDate()} ${months[d.getUTCMonth()]}`;
   };
   const fmt = (x) => Math.abs(x) >= 1000 ? Math.round(x).toLocaleString('en-GB') : (Math.round(x * 10) / 10).toString();
+  const dur = (s) => s < 60 ? `${s} s` : s < 3600 ? `${s / 60} min` : `${s / 3600} h`;
+  const DUR_TICKS = [1, 5, 30, 60, 300, 1200, 3600, 7200];
 
   function alpha(hex, a) {
     if (!hex.startsWith('#')) return hex;
@@ -48,25 +52,33 @@
   for (const spec of specs) {
     const el = document.getElementById('c-' + spec.id);
     if (!el) continue;
-    const all = spec.series.flatMap((s) => s.data.map((p) => toMs(p[0])));
+    const secs = spec.xkind === 'seconds';
+    const X = secs ? (x) => x : toMs;
+    const all = spec.series.flatMap((s) => s.data.map((p) => X(p[0])));
     const min = spec.xmin ? toMs(spec.xmin) : Math.min(...all), max = spec.xmax ? toMs(spec.xmax) : Math.max(...all), span = max - min;
     const isBar = spec.kind === 'bar';
     // Bars get a width in ms: a week for weekly totals, a day otherwise.
     const firstBar = spec.series.find((s) => s.style === 'bar' && s.data.length > 1);
-    const step = firstBar ? toMs(firstBar.data[1][0]) - toMs(firstBar.data[0][0]) : 864e5;
+    const step = firstBar ? X(firstBar.data[1][0]) - X(firstBar.data[0][0]) : 864e5;
     const datasets = spec.series.map((s) => {
       // slot: a categorical slot number, or a token name such as 'l3' for ordered ramps (HR zones).
       const color = v(typeof s.slot === 'number' ? '--s' + s.slot : '--' + s.slot);
-      const base = { label: s.label, data: s.data.map((p) => ({ x: toMs(p[0]), y: p[1] })), borderColor: color, backgroundColor: color };
+      const base = { label: s.label, data: s.data.map((p) => ({ x: X(p[0]), y: p[1] })), borderColor: color, backgroundColor: color };
       // A band is two datasets: the low edge (invisible) and the high edge, filled down to it.
       if (s.style === 'band_lo' || s.style === 'band_hi') return { ...base, type: 'line', borderWidth: 0, pointRadius: 0,
         pointHoverRadius: 0, tension: 0.25, backgroundColor: alpha(color, 0.14), fill: s.style === 'band_hi' ? '-1' : false, order: 3 };
       if (s.style === 'dots') return { ...base, type: 'line', showLine: false, pointRadius: 2, pointHoverRadius: 5,
         backgroundColor: alpha(color, 0.35), borderColor: alpha(color, 0.35), order: 2 };
+      // One point per session: bigger and stronger than daily readings.
+      if (s.style === 'points') return { ...base, type: 'line', showLine: false, pointRadius: 3.5, pointHoverRadius: 6,
+        backgroundColor: alpha(color, 0.55), borderColor: alpha(color, 0.55), order: 2 };
+      // A goal or target that can change over time: a thin dashed step line over the bars.
+      if (s.style === 'step') return { ...base, type: 'line', stepped: 'middle', borderWidth: 1.5, borderDash: [4, 4], pointRadius: 0,
+        pointHoverRadius: 0, order: 0, stack: 'target' };
       if (s.style === 'bar') return { ...base, type: 'bar', borderRadius: 4, borderSkipped: 'start', borderWidth: 0,
         barThickness: 'flex', categoryPercentage: 1, barPercentage: 0.9, order: 1 };
-      return { ...base, type: 'line', borderWidth: 2.25, pointRadius: 0, pointHoverRadius: 5, tension: 0.25,
-        pointHoverBorderColor: v('--surface'), pointHoverBorderWidth: 2, spanGaps: 10 * 864e5, order: 1 };
+      return { ...base, type: 'line', borderWidth: 2.25, pointRadius: secs ? 2.5 : 0, pointHoverRadius: 5, tension: 0.25,
+        pointHoverBorderColor: v('--surface'), pointHoverBorderWidth: 2, spanGaps: spec.spanGaps ? true : 10 * 864e5, order: 1 };
     });
     const visible = spec.series.filter((s) => s.legend !== false);
     new Chart(el, {
@@ -85,13 +97,17 @@
             borderWidth: 1, padding: 10, usePointStyle: true, boxPadding: 4,
             filter: (item) => !String(spec.series[item.datasetIndex].style).startsWith('band'),
             callbacks: {
-              title: (items) => items.length ? (step >= 6 * 864e5 && isBar ? 'Week of ' : '') + dmy(items[0].parsed.x) : '',
+              title: (items) => !items.length ? '' : secs ? dur(items[0].parsed.x) :
+                (step >= 6 * 864e5 && isBar ? 'Week of ' : '') + dmy(items[0].parsed.x),
               label: (item) => ` ${item.dataset.label}: ${fmt(item.parsed.y)}${spec.unit ? ' ' + spec.unit : ''}`,
             },
           },
         },
         scales: {
-          x: { type: 'linear', min: isBar && !spec.xmin ? min - step / 2 : min, max: isBar && !spec.xmax ? max + step / 2 : max, stacked: spec.stacked,
+          x: secs ? { type: 'logarithmic', min, max, grid: { color: v('--grid') }, border: { color: v('--grid') },
+              afterBuildTicks: (axis) => { axis.ticks = DUR_TICKS.filter((t) => t >= min && t <= max).map((t) => ({ value: t })); },
+              ticks: { maxRotation: 0, callback: (x) => dur(x) } }
+            : { type: 'linear', min: isBar && !spec.xmin ? min - step / 2 : min, max: isBar && !spec.xmax ? max + step / 2 : max, stacked: spec.stacked,
             grid: { display: false }, border: { color: v('--grid') },
             ticks: { maxTicksLimit: 6, maxRotation: 0, callback: (x) => short(x, span) } },
           y: { stacked: spec.stacked, beginAtZero: spec.zero, grid: { color: v('--grid') }, border: { display: false },

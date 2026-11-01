@@ -56,8 +56,8 @@ _lock = threading.Lock()
 
 
 class Connection(sqlite3.Connection):
-    # "with connect() as con" closes as well as commits. Python 3.12's statement cache keeps every connection in a
-    # reference cycle, so one left open holds its database file until the garbage collector runs.
+    # "with connect() as con" closes as well as commits. Since Python 3.11 the statement cache keeps every connection in
+    # a reference cycle, so one left open holds its database file until the garbage collector runs.
     def __exit__(self, *exc):
         try:
             return super().__exit__(*exc)

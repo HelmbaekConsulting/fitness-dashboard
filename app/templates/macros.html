@@ -1,4 +1,4 @@
-{# Shared pieces: the readiness card (Today and Recovery). #}
+{# Shared pieces: the readiness card (Today and Recovery) and the KPI card with its sparkline (Today and Movement). #}
 {% macro readiness_card(r, link=True) %}
 <section class="card ready" aria-labelledby="h-ready">
   <div class="card-head">
@@ -26,4 +26,24 @@
     {% endfor %}
   </ul>
 </section>
+{% endmacro %}
+
+{% macro kpi_card(t) %}
+<article class="card kpi">
+  <div class="kpi-head"><span class="chip-icon">{{ icon(t.icon, 16) }}</span>{{ t.label }}
+    {% if t.status %}<span class="kpi-status tone-{{ t.status[0] }}">{{ icon(t.status[2], 13, 2) }}<span>{{ t.status[1] }}</span></span>{% endif %}</div>
+  {% if t.value is none %}
+  <div class="kpi-value muted">No data</div>
+  {% else %}
+  <div class="kpi-value">{{ t.value }}<span class="unit">{{ t.unit }}</span></div>
+  <div class="kpi-delta">{{ t.delta }}</div>
+  {% endif %}
+  <svg class="spark" viewBox="0 0 200 44" preserveAspectRatio="none" aria-hidden="true">
+    {% if t.band %}<path d="{{ t.band }}" class="sp-band"></path>{% endif %}
+    {% if t.line %}<path d="{{ t.line }}" class="sp-line" vector-effect="non-scaling-stroke"></path>{% endif %}
+    {% if t.bars %}<path d="{{ t.bars.old }}" class="sp-bar old"></path><path d="{{ t.bars.now }}" class="sp-bar"></path>
+      {% if t.bars.target %}<path d="M0 {{ t.bars.target }}H200" class="sp-target" vector-effect="non-scaling-stroke"></path>{% endif %}{% endif %}
+  </svg>
+  <div class="kpi-foot"><span>{{ t.foot[0] }}</span><span>{{ t.foot[1] }}</span></div>
+</article>
 {% endmacro %}

@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
-<link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="/static/app.css?v={{ v }}">
 </head>
 <body>
 {% macro link(p, cls='') -%}
@@ -36,7 +36,7 @@
 </div>
 <nav class="tabbar" aria-label="Main">
   {% for p in pages[:4] %}{{ link(p, 'tab') }}{% endfor %}
-  {% set more_on = page in ['muscles', 'progress', 'nutrition', 'strength', 'setup', 'admin'] %}
+  {% set more_on = page in ['movement', 'performance', 'muscles', 'progress', 'nutrition', 'strength', 'setup', 'admin'] %}
   <details class="more{{ ' on' if more_on else '' }}">
     <summary class="tab">{{ icon('more') }}<span>More</span></summary>
     <div class="more-menu">{% for p in pages[4:] %}{{ link(p) }}{% endfor %}{% if admin %}{{ link(admin) }}{% endif %}</div>

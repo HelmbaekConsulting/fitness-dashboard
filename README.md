@@ -17,9 +17,16 @@ Pages (every one with a date filter, 30 days to all history or a custom range):
 - **Body:** Body Scan segments (arms, legs, trunk) on a body figure, muscle or fat, change and left/right balance.
 - **Muscles:** sets per week per muscle on a front and back figure, or days since each muscle was trained.
 - **Training vs body:** training and Body Scan muscle side by side, with a month slider to play the change.
-- **Training:** calendar, time in heart-rate zones, fitness and fatigue. **Recovery:** HRV against your normal
-  range, sleep, resting HR. **Nutrition:** measured vs Garmin maintenance, macros. **Strength:** lifts, records,
-  sessions with calories per exercise.
+- **Movement:** goal rings for steps, floors and weekly intensity minutes, steps against the goal with streaks, distance,
+  floors, active time and calories, your most and least active weekdays, records.
+- **Training:** calendar, time in heart-rate zones, fitness and fatigue, every activity. Each one opens its own page:
+  zones, training effect, fastest splits and power bests against your best, sets, and how it compares with your usual.
+- **Performance:** the year so far against last year, weeks in a row with 3+ training days, personal bests (fastest
+  1 km to 10 km, power for 5 s to 1 h, longest and biggest sessions), training focus by Garmin's training-effect
+  label, the cycling power curve, and distance or power per heartbeat as an efficiency trend.
+- **Recovery:** HRV against your normal range, sleep, sleep schedule (bedtimes, how much they vary, weekend shift),
+  resting HR, stress levels, blood oxygen and breathing rate while asleep. **Nutrition:** measured vs Garmin
+  maintenance, macros. **Strength:** lifts, records, sessions with calories per exercise.
 
 The Personal API has no VO2 max (its endpoint answers "not found"), so the dashboard doesn't show it.
 
