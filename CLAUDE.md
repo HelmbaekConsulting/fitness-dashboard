@@ -32,4 +32,5 @@ Personal health and fitness dashboard: FastAPI + Jinja + Chart.js, SQLite, one D
   and jobs set it per person, so all queries hit that person's database. Never read one person's data in another's request.
 - Charts: one y-axis per chart, series colours in the fixed `--s1`…`--s8` order from `static/app.css`, dates shown
   dd/mm/yyyy.
-- Run locally: `.venv\Scripts\python -m uvicorn app.main:app --port 8080`. Check pages at desktop and 375 px width.
+- Run locally: `.venv/bin/python -m uvicorn app.main:app --port 8080` (Windows: `.venv\Scripts\python`). Check pages at
+  desktop and 375 px width.

@@ -115,12 +115,12 @@ between, the dashboard is always yours.
 ## Run locally
 
 ```bash
-python -m venv .venv
-.venv\Scripts\pip install -r requirements.txt
-.venv\Scripts\python -m uvicorn app.main:app --port 8080
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/python -m uvicorn app.main:app --port 8080
 ```
 
-Data goes to `data/` (git-ignored). `python -m app.cli sync` runs a sync from the command line.
+On Windows the programs are in `.venv\Scripts\` instead of `.venv/bin/`. Data goes to `data/` (git-ignored). `python -m app.cli sync` runs a sync from the command line.
 
 ## How the numbers are made
 
